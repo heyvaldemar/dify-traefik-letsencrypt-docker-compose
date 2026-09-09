@@ -1,0 +1,989 @@
+# Image pins live HERE, as interpolation defaults, so `git pull` (or
+# re-downloading this file) delivers the exact version combination this
+# repository has tested — no .env editing required. Setting the matching
+# variable in .env overrides the default for anyone who wants to pin
+# differently.
+# CI (Trivy scans, check-pin-freshness, the ephemeral test .env) reads
+# the pins from these lines — this block is the single source of truth.
+#
+# Five of these are pinned to a version where Dify's own compose file says
+# `:latest`. A template that ships a moving tag ships a different stack every
+# day, and `busybox:latest`, `nginx:latest` and `ubuntu/squid:latest` all move.
+# The squid one also matters for a second reason: the image tagged `latest`
+# there has not been rebuilt since November 2025, while the `6.6-24.04_edge`
+# line still is.
+x-images:
+  traefik: &traefik-image ${TRAEFIK_IMAGE_TAG:-traefik:${TRAEFIK_IMAGE_VERSION:-3.7@sha256:f86a2cab1b5c649070c49f883c743dd32d8485a56e3368c5f93b9e91f1e91259}}
+  postgres: &postgres-image ${DIFY_POSTGRES_IMAGE_TAG:-postgres:${DIFY_POSTGRES_IMAGE_VERSION:-15-alpine@sha256:fe0737ba566a2c5b2a28f34433c0a423261900ec17b9bf7ad115e1aae7e57f1b}}
+  redis: &redis-image ${DIFY_REDIS_IMAGE_TAG:-redis:${DIFY_REDIS_IMAGE_VERSION:-7.4-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf}}
+  weaviate: &weaviate-image ${DIFY_WEAVIATE_IMAGE_TAG:-semitechnologies/weaviate:${DIFY_WEAVIATE_IMAGE_VERSION:-1.27.0@sha256:53fa576934f8e2c9130dc3a61a0f9b7d9330fe0ff456ccb37db05d03b700abc9}}
+  api: &api-image ${DIFY_API_IMAGE_TAG:-langgenius/dify-api:${DIFY_API_IMAGE_VERSION:-1.17.0@sha256:52be6088dd842e01bc58cdb23a701266a55aa3814b24057c18adfb4d351f8079}}
+  web: &web-image ${DIFY_WEB_IMAGE_TAG:-langgenius/dify-web:${DIFY_WEB_IMAGE_VERSION:-1.17.0@sha256:6a81fcdd82b51f6fe3436cdc25d1a358cd301a2c3457554bf96de7f5f32a6b5a}}
+  sandbox: &sandbox-image ${DIFY_SANDBOX_IMAGE_TAG:-langgenius/dify-sandbox:${DIFY_SANDBOX_IMAGE_VERSION:-0.2.15@sha256:750e1111426ef31a9217b81c98cccfb750f17b182af3221102e420afa9f0928e}}
+  local-sandbox: &local-sandbox-image ${DIFY_LOCAL_SANDBOX_IMAGE_TAG:-langgenius/dify-agent-local-sandbox:${DIFY_LOCAL_SANDBOX_IMAGE_VERSION:-1.17.0@sha256:316279a82ead635306071d2b6a2ee15395daec10e0348f2002c101403d107646}}
+  plugin-daemon: &plugin-daemon-image ${DIFY_PLUGIN_DAEMON_IMAGE_TAG:-langgenius/dify-plugin-daemon:${DIFY_PLUGIN_DAEMON_IMAGE_VERSION:-0.6.10-local@sha256:34412a22d1e1d1a6c73727fef88cffbcdd9be7a21bf9ad3076b4bf5c1b88fd9b}}
+  agent-backend: &agent-backend-image ${DIFY_AGENT_BACKEND_IMAGE_TAG:-langgenius/dify-agent-backend:${DIFY_AGENT_BACKEND_IMAGE_VERSION:-1.17.0@sha256:bdb2ed516bd3c872007c128f67c3a3218c6bf20fd6bae32f274ba3cb884ec4d6}}
+  squid: &squid-image ${DIFY_SQUID_IMAGE_TAG:-ubuntu/squid:${DIFY_SQUID_IMAGE_VERSION:-6.6-24.04_edge@sha256:8a3baed477e2c282ab8aa5edad442f69873246964f225c5c2ae8364b6610963c}}
+  nginx: &nginx-image ${DIFY_NGINX_IMAGE_TAG:-nginx:${DIFY_NGINX_IMAGE_VERSION:-1.29@sha256:1881968aff6f7cdcc4b888c00a11f4ce241ad7ec957e0cb4a9e19e93a3ff87ea}}
+  busybox: &busybox-image ${DIFY_BUSYBOX_IMAGE_TAG:-busybox:${DIFY_BUSYBOX_IMAGE_VERSION:-1.37@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0}}
+
+# Every variable Dify reads comes from .env, which is how upstream configures
+# these images: the configuration surface is three hundred variables, and
+# rewriting them as compose defaults would fork Dify's configuration contract
+# and drift from it silently. .env.example carries the full set with the
+# template's own defaults already applied.
+#
+# The values below are the exceptions, set here rather than in .env because
+# this template is responsible for them: the ones a deployment must not be
+# allowed to start without, and the ones derived from the single hostname the
+# operator sets. Compose applies `environment:` after `env_file:`, so these win.
+x-app-env: &app-env
+  # A missing secret here stops the stack instead of shipping a known key.
+  SECRET_KEY: ${DIFY_SECRET_KEY:?set in .env - see .env.example for the generation command}
+  DB_PASSWORD: ${DIFY_DB_PASSWORD:?set in .env - see .env.example for the generation command}
+  REDIS_PASSWORD: ${DIFY_REDIS_PASSWORD:?set in .env - see .env.example for the generation command}
+  CELERY_BROKER_URL: redis://:${DIFY_REDIS_PASSWORD}@redis:6379/1
+  CODE_EXECUTION_API_KEY: ${DIFY_SANDBOX_API_KEY:?set in .env - see .env.example for the generation command}
+  PLUGIN_DAEMON_KEY: ${DIFY_PLUGIN_DAEMON_KEY:?set in .env - see .env.example for the generation command}
+  PLUGIN_DIFY_INNER_API_KEY: ${DIFY_PLUGIN_INNER_API_KEY:?set in .env - see .env.example for the generation command}
+  INNER_API_KEY_FOR_PLUGIN: ${DIFY_PLUGIN_INNER_API_KEY}
+  DIFY_AGENT_API_TOKEN: ${DIFY_AGENT_API_TOKEN:?set in .env - see .env.example for the generation command}
+  AGENT_BACKEND_API_TOKEN: ${DIFY_AGENT_API_TOKEN}
+  DIFY_AGENT_SERVER_SECRET_KEY: ${DIFY_AGENT_SERVER_SECRET_KEY:?set in .env - see .env.example for the generation command}
+  WEAVIATE_API_KEY: ${DIFY_WEAVIATE_API_KEY:?set in .env - see .env.example for the generation command}
+  # Nine URLs, one hostname. Left empty, Dify guesses from the request, which
+  # breaks e-mail links, the Human Input node and every signed file URL the
+  # moment a reverse proxy is in front of it. Deriving them here is most of
+  # what this template does that a bare compose file does not.
+  CONSOLE_API_URL: https://${DIFY_HOSTNAME:?set in .env - see .env.example}
+  CONSOLE_WEB_URL: https://${DIFY_HOSTNAME}
+  SERVICE_API_URL: https://${DIFY_HOSTNAME}
+  APP_API_URL: https://${DIFY_HOSTNAME}
+  APP_WEB_URL: https://${DIFY_HOSTNAME}
+  FILES_URL: https://${DIFY_HOSTNAME}
+  TRIGGER_URL: https://${DIFY_HOSTNAME}
+  ENDPOINT_URL_TEMPLATE: https://${DIFY_HOSTNAME}/e/{hook_id}
+  NEXT_PUBLIC_SOCKET_URL: wss://${DIFY_HOSTNAME}
+
+networks:
+  dify-network:
+    external: true
+  traefik-network:
+    external: true
+  # Internal by design: the sandbox executes code a user of the platform
+  # wrote, and reaches the internet only through the squid proxy that sits on
+  # this network and the default one. Removing `internal: true` is removing
+  # the containment.
+  ssrf-proxy-network:
+    driver: bridge
+    internal: true
+  agent-sandbox-network:
+    driver: bridge
+    internal: true
+  local-sandbox-proxy-network:
+    driver: bridge
+    internal: true
+
+volumes:
+  dify-app-storage:
+  dify-postgres:
+  dify-redis:
+  dify-weaviate:
+  dify-plugin-daemon:
+  dify-sandbox-dependencies:
+  dify-sandbox-conf:
+  dify-agent-sandbox-home:
+  dify-agent-sandbox-workspace:
+  dify-postgres-backup:
+  dify-data-backups:
+  dify-database-backups:
+  traefik-certificates:
+
+services:
+  db_postgres:
+    image: *postgres-image
+    # Hardening: no privilege escalation via setuid binaries
+    security_opt:
+      - no-new-privileges:true
+    # Drop every Linux capability; add back only what this image's
+    # entrypoint needs (chown its data directory, drop to its service user).
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_READ_SEARCH
+      - FOWNER
+      - SETGID
+      - SETUID
+    # Docker's default is ten seconds, then SIGKILL — not always enough for a
+    # PostgreSQL checkpoint. Killed halfway, the next start does crash
+    # recovery. Sixty seconds, overridable in .env.
+    stop_grace_period: ${DIFY_POSTGRES_STOP_GRACE_PERIOD:-60s}
+    # Resource limits as .env-overridable defaults (e.g. DIFY_POSTGRES_MEMORY_LIMIT=4g);
+    # the override survives every git pull.
+    deploy:
+      resources:
+        limits:
+          memory: ${DIFY_POSTGRES_MEMORY_LIMIT:-2g}
+          cpus: "${DIFY_POSTGRES_CPU_LIMIT:-2.0}"
+        reservations:
+          memory: ${DIFY_POSTGRES_MEMORY_RESERVATION:-256m}
+          cpus: "${DIFY_POSTGRES_CPU_RESERVATION:-0.25}"
+    volumes:
+      - dify-postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: ${DIFY_DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DIFY_DB_PASSWORD:?set in .env - see .env.example for the generation command}
+      POSTGRES_DB: ${DIFY_DB_NAME:-dify}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    command: >-
+      postgres
+      -c max_connections=${DIFY_POSTGRES_MAX_CONNECTIONS:-200}
+      -c shared_buffers=${DIFY_POSTGRES_SHARED_BUFFERS:-128MB}
+      -c work_mem=${DIFY_POSTGRES_WORK_MEM:-4MB}
+      -c maintenance_work_mem=${DIFY_POSTGRES_MAINTENANCE_WORK_MEM:-64MB}
+      -c effective_cache_size=${DIFY_POSTGRES_EFFECTIVE_CACHE_SIZE:-4096MB}
+    networks:
+      - dify-network
+    healthcheck:
+      test: ["CMD", "pg_isready", "-q", "-d", "${DIFY_DB_NAME:-dify}", "-U", "${DIFY_DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  redis:
+    image: *redis-image
+    # Hardening: no privilege escalation via setuid binaries
+    security_opt:
+      - no-new-privileges:true
+    # Drop every Linux capability; add back only what this image's
+    # entrypoint needs (chown its data directory, drop to its service user).
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - SETGID
+      - SETUID
+    # Redis saves its dataset on the way out; killed halfway it leaves a dump
+    # the next start complains about. Sixty seconds, overridable in .env.
+    stop_grace_period: ${DIFY_REDIS_STOP_GRACE_PERIOD:-60s}
+    # Resource limits as .env-overridable defaults (e.g. DIFY_REDIS_MEMORY_LIMIT=1g);
+    # the override survives every git pull.
+    deploy:
+      resources:
+        limits:
+          memory: ${DIFY_REDIS_MEMORY_LIMIT:-512m}
+          cpus: "${DIFY_REDIS_CPU_LIMIT:-1.0}"
+        reservations:
+          memory: ${DIFY_REDIS_MEMORY_RESERVATION:-64m}
+          cpus: "${DIFY_REDIS_CPU_RESERVATION:-0.1}"
+    volumes:
+      - dify-redis:/data
+    command: redis-server --requirepass ${DIFY_REDIS_PASSWORD:?set in .env - see .env.example for the generation command}
+    environment:
+      REDISCLI_AUTH: ${DIFY_REDIS_PASSWORD}
+    networks:
+      - dify-network
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  weaviate:
+    image: *weaviate-image
+    # Hardening: no privilege escalation via setuid binaries
+    security_opt:
+      - no-new-privileges:true
+    # This is where the embeddings live: a knowledge base that has to be
+    # re-indexed is hours of model calls, so it gets the same shutdown grace
+    # as the database.
+    stop_grace_period: ${DIFY_WEAVIATE_STOP_GRACE_PERIOD:-60s}
+    # Resource limits as .env-overridable defaults (e.g. DIFY_WEAVIATE_MEMORY_LIMIT=4g);
+    # the override survives every git pull.
+    deploy:
+      resources:
+        limits:
+          memory: ${DIFY_WEAVIATE_MEMORY_LIMIT:-2g}
+          cpus: "${DIFY_WEAVIATE_CPU_LIMIT:-2.0}"
+        reservations:
+          memory: ${DIFY_WEAVIATE_MEMORY_RESERVATION:-256m}
+          cpus: "${DIFY_WEAVIATE_CPU_RESERVATION:-0.25}"
+    volumes:
+      - dify-weaviate:/var/lib/weaviate
+    environment:
+      PERSISTENCE_DATA_PATH: /var/lib/weaviate
+      QUERY_DEFAULTS_LIMIT: ${DIFY_WEAVIATE_QUERY_DEFAULTS_LIMIT:-25}
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "false"
+      DEFAULT_VECTORIZER_MODULE: none
+      CLUSTER_HOSTNAME: node1
+      AUTHENTICATION_APIKEY_ENABLED: "true"
+      # Dify's own compose ships a fixed key here and the same key in the api
+      # containers. Both sides read it from .env in this template, so the two
+      # move together and neither is the published default.
+      AUTHENTICATION_APIKEY_ALLOWED_KEYS: ${DIFY_WEAVIATE_API_KEY:?set in .env - see .env.example for the generation command}
+      AUTHENTICATION_APIKEY_USERS: ${DIFY_WEAVIATE_USER:-dify@localhost}
+      AUTHORIZATION_ADMINLIST_ENABLED: "true"
+      AUTHORIZATION_ADMINLIST_USERS: ${DIFY_WEAVIATE_USER:-dify@localhost}
+      DISABLE_TELEMETRY: ${DIFY_WEAVIATE_DISABLE_TELEMETRY:-true}
+    networks:
+      - dify-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/v1/.well-known/ready > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  init_permissions:
+    # One shot, before anything writes: the api image runs as uid 1001 and the
+    # storage volume is created owned by root. It leaves a flag file behind, so
+    # every later start is a no-op that exits 0.
+    image: *busybox-image
+    # Hardening: no privilege escalation via setuid binaries
+    security_opt:
+      - no-new-privileges:true
+    # Drop every Linux capability; add back only the two this container exists
+    # to use.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - FOWNER
+    # Resource limits as .env-overridable defaults; the override survives every
+    # git pull.
+    deploy:
+      resources:
+        limits:
+          memory: ${DIFY_INIT_MEMORY_LIMIT:-64m}
+          cpus: "${DIFY_INIT_CPU_LIMIT:-0.5}"
+        reservations:
+          memory: ${DIFY_INIT_MEMORY_RESERVATION:-16m}
+          cpus: "${DIFY_INIT_CPU_RESERVATION:-0.1}"
+    user: root
+    volumes:
+      - dify-app-storage:/app/api/storage
+    command: >-
+      sh -c 'FLAG_FILE="/app/api/storage/.init_permissions";
+      if [ -f "$$FLAG_FILE" ]; then echo "Permissions already initialized."; exit 0; fi;
+      echo "Initializing permissions for /app/api/storage";
+      chown -R 1001:1001 /app/api/storage;
+      touch "$$FLAG_FILE";
+      echo "Permissions initialized."'
+    networks:
+      - dify-network
+    restart: "no"
+
+  sandbox:
+    # Runs code a user of the platform wrote. It sits on the internal network
+    # only and reaches the internet through the squid proxy, which is the
+    # containment: give it the default network and that containment is gone.
+    image: *sandbox-image
+    # Hardening: no privilege escalation via setuid binaries
+    security_opt:
+      - no-new-privileges:true
+    # Resource limits as .env-overridable defaults (e.g. DIFY_SANDBOX_MEMORY_LIMIT=2g);
+    # the override survives every git pull.
+    deploy:
+      resources:
+        limits:
+          memory: ${DIFY_SANDBOX_MEMORY_LIMIT:-1g}
+          cpus: "${DIFY_SANDBOX_CPU_LIMIT:-1.0}"
+        reservations:
+          memory: ${DIFY_SANDBOX_MEMORY_RESERVATION:-64m}
+          cpus: "${DIFY_SANDBOX_CPU_RESERVATION:-0.1}"
+    volumes:
+      - dify-sandbox-dependencies:/dependencies
+      - dify-sandbox-conf:/conf
+    environment:
+      API_KEY: ${DIFY_SANDBOX_API_KEY:?set in .env - see .env.example for the generation command}
+      GIN_MODE: release
+      WORKER_TIMEOUT: ${DIFY_SANDBOX_WORKER_TIMEOUT:-15}
+      ENABLE_NETWORK: ${DIFY_SANDBOX_ENABLE_NETWORK:-true}
+      HTTP_PROXY: http://ssrf_proxy:3128
+      HTTPS_PROXY: http://ssrf_proxy:3128
+      SANDBOX_PORT: 8194
+    networks:
+      - ssrf-proxy-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8194/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  ssrf_proxy:
+    # The one way out of the sandbox network. Its rules are Dify's, vendored
+    # under ssrf_proxy/ in this repository and checked against upstream by CI.
+    image: *squid-image
+    # Hardening: no privilege escalation via setuid binaries
+    security_opt:
+      - no-new-privileges:true
+    # Resource limits as .env-overridable defaults; the override survives every
+    # git pull.
+    deploy:
+      resources:
+        limits:
+          memory: ${DIFY_SSRF_PROXY_MEMORY_LIMIT:-256m}
+          cpus: "${DIFY_SSRF_PROXY_CPU_LIMIT:-0.5}"
+        reservations:
+          memory: ${DIFY_SSRF_PROXY_MEMORY_RESERVATION:-32m}
+          cpus: "${DIFY_SSRF_PROXY_CPU_RESERVATION:-0.1}"
+    volumes:
+      - ./ssrf_proxy/squid.conf.template:/etc/squid/squid.conf.template:ro
+      - ./ssrf_proxy/squid-common.conf.template:/etc/squid/dify_common.conf.template:ro
+      - ./ssrf_proxy/docker-entrypoint.sh:/docker-entrypoint-mount.sh:ro
+    entrypoint: ["sh", "-c", "cp /docker-entrypoint-mount.sh /docker-entrypoint.sh && sed -i 's/\r$$//' /docker-entrypoint.sh && chmod +x /docker-entrypoint.sh && /docker-entrypoint.sh"]
+    environment:
+      HTTP_PORT: 3128
+      COREDUMP_DIR: /var/spool/squid
+      SSRF_PROXY_ALLOW_PRIVATE_IPS: ${DIFY_SSRF_PROXY_ALLOW_PRIVATE_IPS:-}
+      SSRF_PROXY_ALLOW_PRIVATE_DOMAINS: ${DIFY_SSRF_PROXY_ALLOW_PRIVATE_DOMAINS:-}
+    networks:
+      - ssrf-proxy-network
+      - dify-network
+    restart: unless-stopped
+
+  agent_ssrf_proxy:
+    # The same containment for the agent's own sandbox, with its own rule set.
+    image: *squid-image
+    # Hardening: no privilege escalation via setuid binaries
+    security_opt:
+      - no-new-privileges:true
+    # Resource limits as .env-overridable defaults; the override survives every
+    # git pull.
+    deploy:
+      resources:
+        limits:
+          memory: ${DIFY_AGENT_SSRF_PROXY_MEMORY_LIMIT:-256m}
+          cpus: "${DIFY_AGENT_SSRF_PROXY_CPU_LIMIT:-0.5}"
+        reservations:
+          memory: ${DIFY_AGENT_SSRF_PROXY_MEMORY_RESERVATION:-32m}
+          cpus: "${DIFY_AGENT_SSRF_PROXY_CPU_RESERVATION:-0.1}"
+    volumes:
+      - ./ssrf_proxy/squid-agent.conf.template:/etc/squid/squid.conf.template:ro
+      - ./ssrf_proxy/squid-common.conf.template:/etc/squid/dify_common.conf.template:ro
+      - ./ssrf_proxy/docker-agent-entrypoint.sh:/docker-entrypoint-mount.sh:ro
+    entrypoint: ["sh", "-c", "cp /docker-entrypoint-mount.sh /docker-entrypoint.sh && sed -i 's/\r$$//' /docker-entrypoint.sh && chmod +x /docker-entrypoint.sh && /docker-entrypoint.sh"]
+    environment:
+      HTTP_PORT: 3128
+      COREDUMP_DIR: /var/spool/squid
+    networks:
+      - dify-network
+      - local-sandbox-proxy-network
+    restart: unless-stopped
+
+  local_sandbox:
+    # Where an agent's shell commands actually run. Reachable only from the
+    # agent backend, and out to the internet only through agent_ssrf_proxy.
+    image: *local-sandbox-image
+    # Hardening: no privilege escalation via setuid binaries
+    security_opt:
+      - no-new-privileges:true
+    # Resource limits as .env-overridable defaults (e.g. DIFY_LOCAL_SANDBOX_MEMORY_LIMIT=2g);
+    # the override survives every git pull.
+    deploy:
+      resources:
+        limits:
+          memory: ${DIFY_LOCAL_SANDBOX_MEMORY_LIMIT:-1g}
+          cpus: "${DIFY_LOCAL_SANDBOX_CPU_LIMIT:-1.0}"
+        reservations:
+          memory: ${DIFY_LOCAL_SANDBOX_MEMORY_RESERVATION:-64m}
+          cpus: "${DIFY_LOCAL_SANDBOX_CPU_RESERVATION:-0.1}"
+    volumes:
+      - dify-agent-sandbox-home:/home/dify
+      - dify-agent-sandbox-workspace:/workspace
+    environment:
+      HTTP_PROXY: http://agent_ssrf_proxy:3128
+      HTTPS_PROXY: http://agent_ssrf_proxy:3128
+      DIFY_AGENT_LOCAL_SANDBOX_AUTH_TOKEN: ${DIFY_AGENT_LOCAL_SANDBOX_AUTH_TOKEN:?set in .env - see .env.example for the generation command}
+    networks:
+      - agent-sandbox-network
+      - local-sandbox-proxy-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5004/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  plugin_daemon:
+    # Installs and runs plugins. Its storage volume holds the installed
+    # packages: losing it means re-installing every plugin by hand.
+    image: *plugin-daemon-image
+    # Hardening: no privilege escalation via setuid binaries
+    security_opt:
+      - no-new-privileges:true
+    # Resource limits as .env-overridable defaults (e.g. DIFY_PLUGIN_DAEMON_MEMORY_LIMIT=2g);
+    # the override survives every git pull.
+    deploy:
+      resources:
+        limits:
+          memory: ${DIFY_PLUGIN_DAEMON_MEMORY_LIMIT:-1g}
+          cpus: "${DIFY_PLUGIN_DAEMON_CPU_LIMIT:-1.0}"
+        reservations:
+          memory: ${DIFY_PLUGIN_DAEMON_MEMORY_RESERVATION:-128m}
+          cpus: "${DIFY_PLUGIN_DAEMON_CPU_RESERVATION:-0.1}"
+    volumes:
+      - dify-plugin-daemon:/app/storage
+    env_file:
+      - .env
+    environment:
+      <<: *app-env
+      DB_HOST: db_postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${DIFY_DB_USER:-postgres}
+      DB_DATABASE: ${DIFY_DB_PLUGIN_DATABASE:-dify_plugin}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      SERVER_PORT: 5002
+      SERVER_KEY: ${DIFY_PLUGIN_DAEMON_KEY}
+      DIFY_INNER_API_URL: http://api:5001
+      DIFY_INNER_API_KEY: ${DIFY_PLUGIN_INNER_API_KEY}
+      PLUGIN_REMOTE_INSTALLING_HOST: 0.0.0.0
+      PLUGIN_REMOTE_INSTALLING_PORT: 5003
+      PLUGIN_WORKING_PATH: /app/storage/cwd
+      FORCE_VERIFYING_SIGNATURE: ${DIFY_PLUGIN_FORCE_VERIFYING_SIGNATURE:-true}
+    networks:
+      - ssrf-proxy-network
+      - dify-network
+    restart: unless-stopped
+    depends_on:
+      db_postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  agent_backend:
+    # The control plane for the agent runtime: it talks to the plugin daemon,
+    # to the api, and to the local sandbox.
+    image: *agent-backend-image
+    # Hardening: no privilege escalation via setuid binaries
+    security_opt:
+      - no-new-privileges:true
+    # Resource limits as .env-overridable defaults; the override survives every
+    # git pull.
+    deploy:
+      resources:
+        limits:
+          memory: ${DIFY_AGENT_BACKEND_MEMORY_LIMIT:-1g}
+          cpus: "${DIFY_AGENT_BACKEND_CPU_LIMIT:-1.0}"
+        reservations:
+          memory: ${DIFY_AGENT_BACKEND_MEMORY_RESERVATION:-64m}
+          cpus: "${DIFY_AGENT_BACKEND_CPU_RESERVATION:-0.1}"
+    environment:
+      DIFY_AGENT_REDIS_URL: redis://:${DIFY_REDIS_PASSWORD}@redis:6379/2
+      DIFY_AGENT_PLUGIN_DAEMON_URL: http://plugin_daemon:5002
+      DIFY_AGENT_PLUGIN_DAEMON_API_KEY: ${DIFY_PLUGIN_DAEMON_KEY}
+      DIFY_AGENT_INNER_API_URL: http://api:5001
+      DIFY_AGENT_INNER_API_KEY: ${DIFY_PLUGIN_INNER_API_KEY}
+      DIFY_AGENT_RUNTIME_BACKEND: local
+      DIFY_AGENT_LOCAL_SANDBOX_ENDPOINT: http://local_sandbox:5004
+      DIFY_AGENT_LOCAL_SANDBOX_AUTH_TOKEN: ${DIFY_AGENT_LOCAL_SANDBOX_AUTH_TOKEN}
+      DIFY_AGENT_STUB_API_BASE_URL: http://agent_backend:5050/agent-stub
+      DIFY_AGENT_SANDBOX_FILES_BASE_URL: http://api:5001
+      DIFY_AGENT_SERVER_SECRET_KEY: ${DIFY_AGENT_SERVER_SECRET_KEY}
+      DIFY_AGENT_API_TOKEN: ${DIFY_AGENT_API_TOKEN}
+    networks:
+      - dify-network
+      - agent-sandbox-network
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  api:
+    image: *api-image
+    # Hardening: no privilege escalation via setuid binaries
+    security_opt:
+      - no-new-privileges:true
+    # Resource limits as .env-overridable defaults (e.g. DIFY_API_MEMORY_LIMIT=4g);
+    # the override survives every git pull.
+    deploy:
+      resources:
+        limits:
+          memory: ${DIFY_API_MEMORY_LIMIT:-2g}
+          cpus: "${DIFY_API_CPU_LIMIT:-2.0}"
+        reservations:
+          memory: ${DIFY_API_MEMORY_RESERVATION:-256m}
+          cpus: "${DIFY_API_CPU_RESERVATION:-0.25}"
+    volumes:
+      - dify-app-storage:/app/api/storage
+    env_file:
+      - .env
+    environment:
+      <<: *app-env
+      MODE: api
+      # The api, the worker and the beat all run `flask upgrade-db` at start
+      # and take a Redis lock to decide which one actually does it. The others
+      # print "Database migration skipped" and carry on, which is why redis has
+      # to be healthy before any of them start.
+      MIGRATION_ENABLED: ${DIFY_MIGRATION_ENABLED:-true}
+      AGENT_BACKEND_BASE_URL: http://agent_backend:5050
+    networks:
+      - ssrf-proxy-network
+      - dify-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+    restart: unless-stopped
+    depends_on:
+      init_permissions:
+        condition: service_completed_successfully
+      db_postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    image: *api-image
+    # Hardening: no privilege escalation via setuid binaries
+    security_opt:
+      - no-new-privileges:true
+    # Resource limits as .env-overridable defaults (e.g. DIFY_WORKER_MEMORY_LIMIT=4g);
+    # the override survives every git pull. Document indexing runs here, so
+    # this is the service that grows under a real workload.
+    deploy:
+      resources:
+        limits:
+          memory: ${DIFY_WORKER_MEMORY_LIMIT:-2g}
+          cpus: "${DIFY_WORKER_CPU_LIMIT:-2.0}"
+        reservations:
+          memory: ${DIFY_WORKER_MEMORY_RESERVATION:-256m}
+          cpus: "${DIFY_WORKER_CPU_RESERVATION:-0.25}"
+    volumes:
+      - dify-app-storage:/app/api/storage
+    env_file:
+      - .env
+    environment:
+      <<: *app-env
+      MODE: worker
+      MIGRATION_ENABLED: ${DIFY_MIGRATION_ENABLED:-true}
+      AGENT_BACKEND_BASE_URL: http://agent_backend:5050
+    networks:
+      - ssrf-proxy-network
+      - dify-network
+    restart: unless-stopped
+    depends_on:
+      init_permissions:
+        condition: service_completed_successfully
+      db_postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker_beat:
+    # The scheduler. One of these, ever: two would run every periodic task twice.
+    image: *api-image
+    # Hardening: no privilege escalation via setuid binaries
+    security_opt:
+      - no-new-privileges:true
+    # Resource limits as .env-overridable defaults; the override survives every
+    # git pull.
+    deploy:
+      resources:
+        limits:
+          memory: ${DIFY_WORKER_BEAT_MEMORY_LIMIT:-512m}
+          cpus: "${DIFY_WORKER_BEAT_CPU_LIMIT:-0.5}"
+        reservations:
+          memory: ${DIFY_WORKER_BEAT_MEMORY_RESERVATION:-64m}
+          cpus: "${DIFY_WORKER_BEAT_CPU_RESERVATION:-0.1}"
+    env_file:
+      - .env
+    environment:
+      <<: *app-env
+      MODE: beat
+      MIGRATION_ENABLED: ${DIFY_MIGRATION_ENABLED:-true}
+    networks:
+      - ssrf-proxy-network
+      - dify-network
+    restart: unless-stopped
+    depends_on:
+      init_permissions:
+        condition: service_completed_successfully
+      db_postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  api_websocket:
+    # Socket.io traffic only. nginx sends /socket.io/ here rather than to the
+    # api, because the websocket worker class is different.
+    image: *api-image
+    # Hardening: no privilege escalation via setuid binaries
+    security_opt:
+      - no-new-privileges:true
+    # Resource limits as .env-overridable defaults; the override survives every
+    # git pull.
+    deploy:
+      resources:
+        limits:
+          memory: ${DIFY_API_WEBSOCKET_MEMORY_LIMIT:-1g}
+          cpus: "${DIFY_API_WEBSOCKET_CPU_LIMIT:-1.0}"
+        reservations:
+          memory: ${DIFY_API_WEBSOCKET_MEMORY_RESERVATION:-128m}
+          cpus: "${DIFY_API_WEBSOCKET_CPU_RESERVATION:-0.1}"
+    volumes:
+      - dify-app-storage:/app/api/storage
+    env_file:
+      - .env
+    environment:
+      <<: *app-env
+      MODE: api
+      SERVER_WORKER_AMOUNT: ${DIFY_API_WEBSOCKET_WORKER_AMOUNT:-1}
+      SERVER_WORKER_CLASS: geventwebsocket.gunicorn.workers.GeventWebSocketWorker
+      SERVER_WORKER_CONNECTIONS: ${DIFY_API_WEBSOCKET_WORKER_CONNECTIONS:-1000}
+      GUNICORN_TIMEOUT: ${DIFY_API_WEBSOCKET_GUNICORN_TIMEOUT:-360}
+      # Only one of these containers may run the migration lock dance, and the
+      # api already does. This one never migrates.
+      MIGRATION_ENABLED: "false"
+    networks:
+      - ssrf-proxy-network
+      - dify-network
+    restart: unless-stopped
+    depends_on:
+      init_permissions:
+        condition: service_completed_successfully
+      db_postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    image: *web-image
+    # Hardening: no privilege escalation via setuid binaries
+    security_opt:
+      - no-new-privileges:true
+    # Resource limits as .env-overridable defaults (e.g. DIFY_WEB_MEMORY_LIMIT=2g);
+    # the override survives every git pull.
+    deploy:
+      resources:
+        limits:
+          memory: ${DIFY_WEB_MEMORY_LIMIT:-1g}
+          cpus: "${DIFY_WEB_CPU_LIMIT:-1.0}"
+        reservations:
+          memory: ${DIFY_WEB_MEMORY_RESERVATION:-128m}
+          cpus: "${DIFY_WEB_CPU_RESERVATION:-0.1}"
+    env_file:
+      - .env
+    environment:
+      <<: *app-env
+      # Server-side requests from the Next.js process stay inside the network.
+      SERVER_CONSOLE_API_URL: http://api:5001
+    networks:
+      - dify-network
+    restart: unless-stopped
+
+  nginx:
+    # The Debian image, not the alpine one. Dify's nginx entrypoint is a bash
+    # script, and the alpine image has no bash: pinned there, the container
+    # restarts forever on `/docker-entrypoint.sh: not found`.
+    # Dify's own reverse proxy, kept. It carries the routing table that sends
+    # /console/api, /api, /v1, /openapi, /files, /mcp and /triggers to the api,
+    # /socket.io/ to the websocket worker, /e/ to the plugin daemon with the
+    # public hook URL in a header, and everything else to the web frontend.
+    # Reproducing that table in Traefik labels would be a fork of Dify's
+    # routing that drifts on every release; Traefik terminates TLS in front of
+    # it instead. The config files it reads are vendored under nginx/ in this
+    # repository, and CI checks them against upstream at the pinned version.
+    image: *nginx-image
+    # Hardening: no privilege escalation via setuid binaries
+    security_opt:
+      - no-new-privileges:true
+    # Resource limits as .env-overridable defaults; the override survives every
+    # git pull.
+    deploy:
+      resources:
+        limits:
+          memory: ${DIFY_NGINX_MEMORY_LIMIT:-256m}
+          cpus: "${DIFY_NGINX_CPU_LIMIT:-0.5}"
+        reservations:
+          memory: ${DIFY_NGINX_MEMORY_RESERVATION:-32m}
+          cpus: "${DIFY_NGINX_CPU_RESERVATION:-0.1}"
+    volumes:
+      - ./nginx/nginx.conf.template:/etc/nginx/nginx.conf.template:ro
+      - ./nginx/proxy.conf.template:/etc/nginx/proxy.conf.template:ro
+      - ./nginx/https.conf.template:/etc/nginx/https.conf.template:ro
+      # The TEMPLATE only, not the directory. Dify's entrypoint renders it into
+      # /etc/nginx/conf.d/default.conf at start, and a read-only directory mount
+      # there makes that write fail silently: nginx comes up with no server block
+      # at all, listening on nothing, while its log shows worker processes
+      # starting normally.
+      - ./nginx/conf.d/default.conf.template:/etc/nginx/conf.d/default.conf.template:ro
+      - ./nginx/docker-entrypoint.sh:/docker-entrypoint-mount.sh:ro
+    entrypoint: ["sh", "-c", "cp /docker-entrypoint-mount.sh /docker-entrypoint.sh && sed -i 's/\r$$//' /docker-entrypoint.sh && chmod +x /docker-entrypoint.sh && /docker-entrypoint.sh"]
+    environment:
+      NGINX_SERVER_NAME: _
+      # Traefik terminates TLS and Let's Encrypt. This nginx speaks plain HTTP
+      # on the internal network and never sees a certificate, which is also why
+      # the certbot volumes upstream mounts are absent here.
+      NGINX_HTTPS_ENABLED: "false"
+      NGINX_ENABLE_CERTBOT_CHALLENGE: "false"
+      NGINX_PORT: 80
+      NGINX_SSL_PORT: 443
+      NGINX_WORKER_PROCESSES: ${DIFY_NGINX_WORKER_PROCESSES:-auto}
+      # A knowledge-base document is one upload; the ceiling is here.
+      NGINX_CLIENT_MAX_BODY_SIZE: ${DIFY_NGINX_CLIENT_MAX_BODY_SIZE:-100M}
+      NGINX_KEEPALIVE_TIMEOUT: ${DIFY_NGINX_KEEPALIVE_TIMEOUT:-65}
+      # Must be at least WORKFLOW_MAX_EXECUTION_TIME, or a long workflow is cut
+      # off by the proxy rather than by its own limit.
+      NGINX_PROXY_READ_TIMEOUT: ${DIFY_NGINX_PROXY_READ_TIMEOUT:-3600s}
+      NGINX_PROXY_SEND_TIMEOUT: ${DIFY_NGINX_PROXY_SEND_TIMEOUT:-3600s}
+      NGINX_SOCKET_IO_UPSTREAM: api_websocket:5001
+    networks:
+      - dify-network
+      - traefik-network
+    healthcheck:
+      # curl, not wget: the Debian nginx image ships curl and no wget.
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:80/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    labels:
+      # Enable Traefik for this container
+      - "traefik.enable=true"
+      # Match incoming requests on a specific hostname
+      - "traefik.http.routers.dify.rule=Host(`${DIFY_HOSTNAME:?set in .env - see .env.example}`)"
+      # Assign the router to a named Traefik service
+      - "traefik.http.routers.dify.service=dify"
+      # Use the 'websecure' (HTTPS) entry point
+      - "traefik.http.routers.dify.entrypoints=websecure"
+      # Define the internal container port for routing
+      - "traefik.http.services.dify.loadbalancer.server.port=80"
+      # Enable TLS on this router
+      - "traefik.http.routers.dify.tls=true"
+      # Use Let's Encrypt for certificate management
+      - "traefik.http.routers.dify.tls.certresolver=letsencrypt"
+      # Pass the original Host header to the container: the plugin daemon
+      # builds its public webhook URL from it.
+      - "traefik.http.services.dify.loadbalancer.passhostheader=true"
+      # Apply a compression middleware
+      - "traefik.http.routers.dify.middlewares=compresstraefik"
+      # Define settings for the compression middleware
+      - "traefik.http.middlewares.compresstraefik.compress=true"
+      # Specify which Docker network Traefik should use for routing
+      - "traefik.docker.network=traefik-network"
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_started
+      traefik:
+        condition: service_healthy
+
+  traefik:
+    image: *traefik-image
+    # Hardening: no privilege escalation via setuid binaries
+    security_opt:
+      - no-new-privileges:true
+    # Drop every Linux capability; add back only what this image's
+    # entrypoint needs (bind :80/:443).
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    # Resource limits as .env-overridable defaults (e.g. TRAEFIK_MEMORY_LIMIT=2g);
+    # the override survives every git pull.
+    deploy:
+      resources:
+        limits:
+          memory: ${TRAEFIK_MEMORY_LIMIT:-256m}
+          cpus: "${TRAEFIK_CPU_LIMIT:-0.5}"
+        reservations:
+          memory: ${TRAEFIK_MEMORY_RESERVATION:-64m}
+          cpus: "${TRAEFIK_CPU_RESERVATION:-0.1}"
+    command:
+      # Set the log level (DEBUG, INFO, WARN, ERROR)
+      - "--log.level=${TRAEFIK_LOG_LEVEL:-WARN}"
+      # Enable the built-in API and web-based dashboard
+      - "--api.dashboard=true"
+      # Enable the /ping endpoint so we can health-check Traefik
+      - "--ping=true"
+      # Assign the /ping endpoint to a dedicated entry point on port 8082
+      - "--ping.entrypoint=ping"
+      - "--entrypoints.ping.address=:8082"
+      # Define the primary HTTP entry point on port 80
+      - "--entrypoints.web.address=:80"
+      # Define the secure (HTTPS) entry point on port 443
+      - "--entrypoints.websecure.address=:443"
+      # HTTP -> HTTPS redirect at entrypoint level
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      # A workflow run is one long request and can take an hour by default.
+      # Traefik's own timeouts have to be at least as generous as Dify's, or
+      # the proxy cuts off a run the platform considers healthy.
+      - "--entrypoints.websecure.transport.respondingTimeouts.readTimeout=${DIFY_REQUEST_TIMEOUT:-3600s}"
+      - "--entrypoints.websecure.transport.respondingTimeouts.writeTimeout=${DIFY_REQUEST_TIMEOUT:-3600s}"
+      - "--entrypoints.websecure.transport.respondingTimeouts.idleTimeout=${DIFY_REQUEST_TIMEOUT:-3600s}"
+      # Enable the Docker provider to detect containers and their labels
+      - "--providers.docker=true"
+      # Point Traefik to the Docker socket
+      - "--providers.docker.endpoint=unix:///var/run/docker.sock"
+      # Prevent automatic exposure of all containers; only expose containers
+      # with "traefik.enable=true"
+      - "--providers.docker.exposedbydefault=false"
+      # Use ACME (Let's Encrypt) to generate/renew certificates via TLS challenge
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+      # The email address used by Let's Encrypt for renewal notices
+      - "--certificatesresolvers.letsencrypt.acme.email=${TRAEFIK_ACME_EMAIL:?set in .env - see .env.example}"
+      # The file where ACME certificates are stored inside the container
+      - "--certificatesresolvers.letsencrypt.acme.storage=/etc/traefik/acme/acme.json"
+      # Enable Prometheus metrics
+      - "--metrics.prometheus=true"
+      # Configure Prometheus histogram buckets
+      - "--metrics.prometheus.buckets=0.1,0.3,1.2,5.0"
+      # Check for newer Traefik versions and optionally log that info
+      - "--global.checknewversion=true"
+      # Disable sending anonymous usage data to the Traefik maintainers
+      - "--global.sendanonymoususage=false"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-certificates:/etc/traefik/acme
+    networks:
+      - traefik-network
+    ports:
+      - "80:80"
+      - "443:443"
+    healthcheck:
+      test: ["CMD", "wget", "http://localhost:8082/ping","--spider"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    labels:
+      # Enable Traefik for this container
+      - "traefik.enable=true"
+      # A router to expose the Traefik dashboard
+      - "traefik.http.routers.dashboard.rule=Host(`${TRAEFIK_HOSTNAME:?set in .env - see .env.example}`)"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.tls=true"
+      - "traefik.http.routers.dashboard.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.dashboard.service=api@internal"
+      # Basic Authentication for the Traefik dashboard
+      - "traefik.http.routers.dashboard.middlewares=authtraefik"
+      - "traefik.http.middlewares.authtraefik.basicauth.users=${TRAEFIK_BASIC_AUTH:?set in .env - see .env.example for htpasswd generation}"
+      # Specify the internal server port to the dashboard service
+      - "traefik.http.services.dashboard.loadbalancer.server.port=8080"
+      # Pass the original Host header to the backend
+      - "traefik.http.services.dashboard.loadbalancer.passhostheader=true"
+    restart: unless-stopped
+
+  backups:
+    # The same image the database runs, so pg_dump is the server's own major
+    # version and the dump restores into it without a version argument.
+    image: *postgres-image
+    # Hardening: no privilege escalation via setuid binaries
+    security_opt:
+      - no-new-privileges:true
+    # Drop every Linux capability; add back only what this container needs to
+    # write archives it owns.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+    # Resource limits as .env-overridable defaults; the override survives every
+    # git pull.
+    deploy:
+      resources:
+        limits:
+          memory: ${DIFY_BACKUPS_MEMORY_LIMIT:-512m}
+          cpus: "${DIFY_BACKUPS_CPU_LIMIT:-1.0}"
+        reservations:
+          memory: ${DIFY_BACKUPS_MEMORY_RESERVATION:-32m}
+          cpus: "${DIFY_BACKUPS_CPU_RESERVATION:-0.1}"
+    command: >-
+      bash -c 'set -o pipefail;
+      sleep "$$BACKUP_INIT_SLEEP";
+      while true; do
+        STAMP="$$(date +%Y-%m-%d_%H-%M)";
+        DB_FILE="$$POSTGRES_BACKUPS_PATH/$$POSTGRES_BACKUP_NAME-$$STAMP.gz";
+        echo "[$$(date -Iseconds)] Starting database backup to $$DB_FILE";
+        if pg_dump -h db_postgres -p 5432 -d $$DIFY_DB_NAME -U $$DIFY_DB_USER | gzip > "$$DB_FILE.partial"; then
+          mv "$$DB_FILE.partial" "$$DB_FILE";
+          echo "[$$(date -Iseconds)] Database backup OK: $$DB_FILE ($$(stat -c %s "$$DB_FILE") bytes)";
+        else
+          echo "[$$(date -Iseconds)] Database backup FAILED - partial file kept as $$DB_FILE.failed for diagnosis" >&2;
+          mv "$$DB_FILE.partial" "$$DB_FILE.failed" 2>/dev/null || true;
+        fi;
+        PLUGIN_FILE="$$POSTGRES_BACKUPS_PATH/$$PLUGIN_BACKUP_NAME-$$STAMP.gz";
+        echo "[$$(date -Iseconds)] Starting plugin database backup to $$PLUGIN_FILE";
+        # The plugin daemon keeps its own database. It is created by the daemon
+        # on first start, so on a stack that has never run plugins it may not
+        # exist yet - that is a skip, not a failure.
+        if psql -h db_postgres -p 5432 -U $$DIFY_DB_USER -d postgres -lqtA -F: | cut -d: -f1 | grep -qx "$$DIFY_DB_PLUGIN_NAME"; then
+          if pg_dump -h db_postgres -p 5432 -d $$DIFY_DB_PLUGIN_NAME -U $$DIFY_DB_USER | gzip > "$$PLUGIN_FILE.partial"; then
+            mv "$$PLUGIN_FILE.partial" "$$PLUGIN_FILE";
+            echo "[$$(date -Iseconds)] Plugin database backup OK: $$PLUGIN_FILE ($$(stat -c %s "$$PLUGIN_FILE") bytes)";
+          else
+            echo "[$$(date -Iseconds)] Plugin database backup FAILED - partial file kept as $$PLUGIN_FILE.failed for diagnosis" >&2;
+            mv "$$PLUGIN_FILE.partial" "$$PLUGIN_FILE.failed" 2>/dev/null || true;
+          fi;
+        else
+          echo "[$$(date -Iseconds)] Plugin database $$DIFY_DB_PLUGIN_NAME does not exist yet - skipped";
+        fi;
+        DATA_FILE="$$DATA_BACKUPS_PATH/$$DATA_BACKUP_NAME-$$STAMP.tar.gz";
+        echo "[$$(date -Iseconds)] Starting application data backup to $$DATA_FILE";
+        # Uploaded documents and the installed plugin packages. GNU tar exits 1
+        # when a live application changed a file mid-read; the archive is
+        # complete - only exit 2 is a real failure. No GNU-only flags: this is
+        # an alpine image and ships BusyBox tar.
+        tar -zcpf "$$DATA_FILE.partial" $$DATA_PATH $$PLUGIN_DATA_PATH; RC=$$?;
+        if [ "$$RC" -eq 0 ] || [ "$$RC" -eq 1 ]; then
+          mv "$$DATA_FILE.partial" "$$DATA_FILE";
+          echo "[$$(date -Iseconds)] Data backup OK: $$DATA_FILE ($$(stat -c %s "$$DATA_FILE") bytes)$$([ "$$RC" -eq 1 ] && echo " - some files changed while being read")";
+        else
+          echo "[$$(date -Iseconds)] Data backup FAILED - partial file kept as $$DATA_FILE.failed for diagnosis" >&2;
+          mv "$$DATA_FILE.partial" "$$DATA_FILE.failed" 2>/dev/null || true;
+        fi;
+        if [ "$${POSTGRES_BACKUP_PRUNE_DAYS:-0}" -ge 1 ]; then
+          find "$$POSTGRES_BACKUPS_PATH" -type f -name "$$POSTGRES_BACKUP_NAME-*" -mtime "+$$POSTGRES_BACKUP_PRUNE_DAYS" -delete;
+          find "$$POSTGRES_BACKUPS_PATH" -type f -name "$$PLUGIN_BACKUP_NAME-*" -mtime "+$$POSTGRES_BACKUP_PRUNE_DAYS" -delete;
+        fi;
+        if [ "$${DATA_BACKUP_PRUNE_DAYS:-0}" -ge 1 ]; then
+          find "$$DATA_BACKUPS_PATH" -type f -name "$$DATA_BACKUP_NAME-*" -mtime "+$$DATA_BACKUP_PRUNE_DAYS" -delete;
+        fi;
+        sleep "$$BACKUP_INTERVAL";
+      done'
+    volumes:
+      - dify-postgres-backup:/var/lib/postgresql/data
+      - dify-app-storage:${DATA_PATH:-/app/api/storage}
+      - dify-plugin-daemon:${PLUGIN_DATA_PATH:-/app/plugin-storage}
+      - dify-data-backups:${DATA_BACKUPS_PATH:-/srv/dify-application-data/backups}
+      - dify-database-backups:${POSTGRES_BACKUPS_PATH:-/srv/dify-postgres/backups}
+    environment:
+      DIFY_DB_NAME: ${DIFY_DB_NAME:-dify}
+      DIFY_DB_PLUGIN_NAME: ${DIFY_DB_PLUGIN_DATABASE:-dify_plugin}
+      DIFY_DB_USER: ${DIFY_DB_USER:-postgres}
+      PGPASSWORD: ${DIFY_DB_PASSWORD}
+      BACKUP_INIT_SLEEP: ${BACKUP_INIT_SLEEP:-30m}
+      BACKUP_INTERVAL: ${BACKUP_INTERVAL:-24h}
+      POSTGRES_BACKUP_PRUNE_DAYS: ${POSTGRES_BACKUP_PRUNE_DAYS:-7}
+      DATA_BACKUP_PRUNE_DAYS: ${DATA_BACKUP_PRUNE_DAYS:-7}
+      POSTGRES_BACKUPS_PATH: ${POSTGRES_BACKUPS_PATH:-/srv/dify-postgres/backups}
+      DATA_BACKUPS_PATH: ${DATA_BACKUPS_PATH:-/srv/dify-application-data/backups}
+      DATA_PATH: ${DATA_PATH:-/app/api/storage}
+      PLUGIN_DATA_PATH: ${PLUGIN_DATA_PATH:-/app/plugin-storage}
+      POSTGRES_BACKUP_NAME: ${POSTGRES_BACKUP_NAME:-dify-postgres-backup}
+      PLUGIN_BACKUP_NAME: ${PLUGIN_BACKUP_NAME:-dify-plugin-postgres-backup}
+      DATA_BACKUP_NAME: ${DATA_BACKUP_NAME:-dify-application-data-backup}
+    networks:
+      - dify-network
+    restart: unless-stopped
+    depends_on:
+      db_postgres:
+        condition: service_healthy

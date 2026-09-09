@@ -1,0 +1,483 @@
+name: Deployment Verification
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    # Daily rebuild: security patches should not wait for a weekly slot.
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: deployment-verification-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  # Authenticated requests avoid the anonymous API rate limit that shared
+  # GitHub runners regularly hit (api.github.com answers 403 otherwise).
+  GH_API_TOKEN: ${{ github.token }}
+
+jobs:
+  lint:
+    name: Lint shell scripts and workflow YAML
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: ShellCheck
+        run: |
+          docker run --rm -v "$PWD:/mnt" -w /mnt \
+            koalaman/shellcheck-alpine:stable \
+            shellcheck ./*.sh
+
+      - name: actionlint (GitHub Actions workflow linting)
+        run: |
+          docker run --rm -v "$PWD:/mnt" -w /mnt \
+            rhysd/actionlint:1.7.12 \
+            -color
+
+  scan-trivy:
+    name: Scan pinned upstream image with Trivy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Findings surface in the Security tab for triage; they don't block CI.
+    continue-on-error: true
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      # Image refs are read from the compose file's x-images defaults at
+      # runtime — single source of truth.
+      fail-fast: false
+      matrix:
+        include:
+          - name: postgres
+            env_var: DIFY_POSTGRES_IMAGE_TAG
+            skip_files: "usr/local/bin/gosu,/usr/local/bin/gosu,etc/ssl/private/ssl-cert-snakeoil.key,/etc/ssl/private/ssl-cert-snakeoil.key"
+          - name: redis
+            env_var: DIFY_REDIS_IMAGE_TAG
+          - name: weaviate
+            env_var: DIFY_WEAVIATE_IMAGE_TAG
+          - name: api
+            env_var: DIFY_API_IMAGE_TAG
+          - name: web
+            env_var: DIFY_WEB_IMAGE_TAG
+          - name: sandbox
+            env_var: DIFY_SANDBOX_IMAGE_TAG
+          - name: local-sandbox
+            env_var: DIFY_LOCAL_SANDBOX_IMAGE_TAG
+          - name: plugin-daemon
+            env_var: DIFY_PLUGIN_DAEMON_IMAGE_TAG
+          - name: agent-backend
+            env_var: DIFY_AGENT_BACKEND_IMAGE_TAG
+          - name: squid
+            env_var: DIFY_SQUID_IMAGE_TAG
+          - name: nginx
+            env_var: DIFY_NGINX_IMAGE_TAG
+          - name: busybox
+            env_var: DIFY_BUSYBOX_IMAGE_TAG
+          - name: traefik
+            env_var: TRAEFIK_IMAGE_TAG
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Read pinned ${{ matrix.name }} image from the compose file
+        id: pin
+        env:
+          ENV_VAR: ${{ matrix.env_var }}
+        run: |
+          image="$(grep -m1 -oE "\\$\\{${ENV_VAR}:-.*" dify-traefik-letsencrypt-docker-compose.yml | sed -E -e ':a' -e 's/\$\{[A-Z0-9_]+:-([^{}]*)\}/\1/' -e 'ta')"
+          if [ -z "$image" ]; then
+            echo "${ENV_VAR} default not found in the compose x-images block" >&2
+            exit 1
+          fi
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+
+      - name: Trivy scan of ${{ matrix.name }}
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.pin.outputs.image }}
+          format: sarif
+          output: trivy-${{ matrix.name }}.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          skip-files: ${{ matrix.skip_files }}
+
+      - name: Upload Trivy SARIF (${{ matrix.name }}) to GitHub Security
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          sarif_file: trivy-${{ matrix.name }}.sarif
+          category: trivy-${{ matrix.name }}
+
+  check-pin-freshness:
+    name: Check pinned images for upstream drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Scheduled + manual dispatch only: a new upstream release is not
+    # actionable inside an unrelated PR. On the cron the failure lands as a
+    # workflow-failure notification to the maintainer — a stale pin must
+    # not sit unnoticed. Dependabot cannot see these pins (they are compose
+    # interpolation defaults, not Dockerfile literals), so this job is the
+    # actual tracking mechanism.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Compare pinned digests against what each tag resolves to now
+        run: |
+          status=0
+          for var in DIFY_POSTGRES_IMAGE_TAG DIFY_REDIS_IMAGE_TAG DIFY_WEAVIATE_IMAGE_TAG DIFY_API_IMAGE_TAG DIFY_WEB_IMAGE_TAG DIFY_SANDBOX_IMAGE_TAG DIFY_LOCAL_SANDBOX_IMAGE_TAG DIFY_PLUGIN_DAEMON_IMAGE_TAG DIFY_AGENT_BACKEND_IMAGE_TAG DIFY_SQUID_IMAGE_TAG DIFY_NGINX_IMAGE_TAG DIFY_BUSYBOX_IMAGE_TAG TRAEFIK_IMAGE_TAG; do
+            pin="$(grep -m1 -oE "\\$\\{${var}:-.*" dify-traefik-letsencrypt-docker-compose.yml | sed -E -e ':a' -e 's/\$\{[A-Z0-9_]+:-([^{}]*)\}/\1/' -e 'ta')"
+            ref="${pin%%@*}"
+            pinned_digest="${pin##*@}"
+            # Three attempts: an unanswered registry lookup used to leave this empty,
+            # and the comparison below then reported it as drift.
+            current_digest=""
+            for attempt in 1 2 3; do
+              current_digest="$(docker buildx imagetools inspect "$ref" --format '{{json .Manifest}}' 2>/dev/null | jq -r '.digest // empty')"
+              [ -n "$current_digest" ] && break
+              sleep $(( attempt * 5 ))
+            done
+            if [ -z "$current_digest" ]; then
+              echo "::error::${ref} did not resolve after three attempts: the registry did not answer, or the tag is gone. The pin itself is unchanged."
+              status=1
+              continue
+            fi
+            if [ "$pinned_digest" != "$current_digest" ]; then
+              echo "::error::${var} digest drift: pinned ${pinned_digest}, but ${ref} now resolves to ${current_digest}"
+              status=1
+            else
+              echo "${var} OK (${ref})"
+            fi
+          done
+          exit "$status"
+
+      - name: Compare the pinned Dify version against the latest release
+        # Runs even when the digest comparison above failed, so one run
+        # reports every problem it can see instead of one per day.
+        #
+        # Four images carry the Dify release: the api, the web frontend, the
+        # agent's local sandbox and the agent backend. Dify supports no
+        # combination where they differ, so a disagreement between them is a
+        # finding in itself and is checked before the lag is.
+        if: always()
+        run: |
+          read_pin() {
+            grep -m1 -oE "\\$\\{$1:-.*" dify-traefik-letsencrypt-docker-compose.yml \
+              | sed -E -e ':a' -e 's/\$\{[A-Z0-9_]+:-([^{}]*)\}/\1/' -e 'ta'
+          }
+          version_of() { p="$(read_pin "$1")"; r="${p%%@*}"; echo "${r##*:}"; }
+          api="$(version_of DIFY_API_IMAGE_TAG)"
+          for var in DIFY_WEB_IMAGE_TAG DIFY_LOCAL_SANDBOX_IMAGE_TAG DIFY_AGENT_BACKEND_IMAGE_TAG; do
+            other="$(version_of "$var")"
+            if [ "$other" != "$api" ]; then
+              echo "::error::${var} carries ${other} while the api carries ${api}. Dify ships these images as one release."
+              exit 1
+            fi
+          done
+          latest="$(curl -fsSL --retry 3 -H "Authorization: Bearer $GH_API_TOKEN" https://api.github.com/repos/langgenius/dify/releases/latest | jq -r .tag_name)"
+          if [ -z "$latest" ] || [ "$latest" = "null" ]; then
+            echo "::error::Could not determine the latest Dify release from the GitHub API"
+            exit 1
+          fi
+          if [ "$api" != "$latest" ]; then
+            echo "::error::Dify pin is behind: pinned ${api}, latest release is ${latest}"
+            exit 1
+          fi
+          echo "Dify pin ${api} matches the latest release, and all four images carry it"
+
+      - name: Compare the vendored nginx and squid configuration against upstream
+        # This template keeps Dify's own reverse proxy and its two squid
+        # proxies, so it has to carry the config files they read. Vendored
+        # files rot silently: upstream adds a route, every deployment built
+        # from this template keeps the old table, and nothing says so. They are
+        # compared byte for byte against the release this repository pins, so a
+        # change upstream fails this job instead of going unnoticed.
+        if: always()
+        run: |
+          pin="$(grep -m1 -oE '\$\{DIFY_API_IMAGE_TAG:-.*' dify-traefik-letsencrypt-docker-compose.yml | sed -E -e ':a' -e 's/\$\{[A-Z0-9_]+:-([^{}]*)\}/\1/' -e 'ta')"
+          ref="${pin%%@*}"; version="${ref##*:}"
+          status=0
+          for f in nginx/nginx.conf.template nginx/proxy.conf.template nginx/https.conf.template \
+                   nginx/docker-entrypoint.sh nginx/conf.d/default.conf.template \
+                   ssrf_proxy/squid.conf.template ssrf_proxy/squid-agent.conf.template \
+                   ssrf_proxy/squid-common.conf.template ssrf_proxy/docker-entrypoint.sh \
+                   ssrf_proxy/docker-agent-entrypoint.sh; do
+            up="$(curl -fsSL --retry 3 -H "Authorization: Bearer $GH_API_TOKEN" \
+                   -H "Accept: application/vnd.github.raw" \
+                   "https://api.github.com/repos/langgenius/dify/contents/docker/${f}?ref=${version}" || true)"
+            if [ -z "$up" ]; then
+              echo "::error::could not read docker/${f} from Dify at ${version}"
+              status=1
+              continue
+            fi
+            if printf '%s' "$up" | diff -q - "$f" > /dev/null 2>&1; then
+              echo "${f} matches upstream at ${version}"
+            else
+              echo "::error::${f} differs from Dify's own at ${version} — re-vendor it and re-read the routing"
+              printf '%s' "$up" | diff -u - "$f" | head -40 || true
+              status=1
+            fi
+          done
+          exit "$status"
+
+      - name: Compare pinned Traefik minor against the latest release
+        # Runs even when the digest comparison above failed, so one run
+        # reports every problem it can see instead of one per day.
+        if: always()
+        run: |
+          pin="$(grep -m1 -oE '\$\{TRAEFIK_IMAGE_TAG:-.*' dify-traefik-letsencrypt-docker-compose.yml | sed -E -e ':a' -e 's/\$\{[A-Z0-9_]+:-([^{}]*)\}/\1/' -e 'ta')"
+          ref="${pin%%@*}"
+          pinned_minor="${ref##*:}"
+          latest="$(curl -fsSL --retry 3 -H "Authorization: Bearer $GH_API_TOKEN" https://api.github.com/repos/traefik/traefik/releases/latest | jq -r .tag_name)"
+          latest="${latest#v}"
+          if [ -z "$latest" ] || [ "$latest" = "null" ]; then
+            echo "::error::Could not determine the latest Traefik release from the GitHub API"
+            exit 1
+          fi
+          case "$latest" in
+            "$pinned_minor".*) echo "Traefik pin ${pinned_minor} matches the latest release line (${latest})" ;;
+            *) echo "::error::Traefik pin is behind: pinned minor ${pinned_minor}, latest release is ${latest}"; exit 1 ;;
+          esac
+
+  deploy-and-test:
+    name: docker compose up + Dify HTTPS smoke + backup validity
+    runs-on: ubuntu-latest
+    needs: lint
+    timeout-minutes: 35
+    permissions:
+      contents: read
+
+    env:
+      NETWORK_ONE: dify-network
+      NETWORK_TWO: traefik-network
+      DOCKER_COMPOSE_FILE: dify-traefik-letsencrypt-docker-compose.yml
+      APP_HOSTNAME: dify.heyvaldemardm.net
+      APP_TRAEFIK_HOSTNAME: traefik.dify.heyvaldemardm.net
+      COMPOSE_PROJECT_NAME: dify
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Create necessary Docker networks
+        run: |
+          docker network create "$NETWORK_ONE" || true
+          docker network create "$NETWORK_TWO" || true
+
+      - name: Generate test .env with ephemeral credentials
+        # .env.example is COPIED, not hand-written: Dify reads its
+        # configuration from the env file, so a variable missing from
+        # .env.example is a variable missing from every deployment built from
+        # this template. Copying it here means the file itself is what CI
+        # boots, and an omission fails the run instead of the reader.
+        # Only the secrets and the hostname are replaced, with throwaway
+        # values; no *_IMAGE_TAG on purpose, so CI tests exactly the pins the
+        # template ships.
+        run: |
+          cp .env.example .env
+          gen() { openssl rand -base64 42 | tr -d '\n/+=' | head -c 42; }
+          set_var() {
+            # Replace the placeholder in place, keeping the file's order and
+            # its comments, so a missing key is a visible failure rather than
+            # a silent append.
+            grep -q "^$1=" .env || { echo "::error::$1 is not in .env.example"; exit 1; }
+            python3 - "$1" "$2" <<'PY'
+          import io, sys
+          key, val = sys.argv[1], sys.argv[2]
+          out = []
+          for line in io.open(".env", encoding="utf-8").read().splitlines():
+              out.append("%s=%s" % (key, val) if line.startswith(key + "=") else line)
+          io.open(".env", "w", encoding="utf-8").write("\n".join(out) + "\n")
+          PY
+          }
+          set_var DIFY_HOSTNAME "${APP_HOSTNAME}"
+          set_var TRAEFIK_HOSTNAME "${APP_TRAEFIK_HOSTNAME}"
+          set_var TRAEFIK_ACME_EMAIL "ci@example.com"
+          # shellcheck disable=SC2016  # the $$ must reach .env literally: compose reads it as one $
+          set_var TRAEFIK_BASIC_AUTH 'traefikadmin:$$2y$$10$$sMzJfirKC75x/hVpiINeZOiSm.Jkity9cn4KwNkRvO7hSQVFc5FLO'
+          set_var DIFY_SECRET_KEY "$(gen)"
+          set_var DIFY_DB_PASSWORD "$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)"
+          set_var DIFY_REDIS_PASSWORD "$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)"
+          set_var DIFY_SANDBOX_API_KEY "$(gen)"
+          set_var DIFY_PLUGIN_DAEMON_KEY "$(gen)"
+          set_var DIFY_PLUGIN_INNER_API_KEY "$(gen)"
+          set_var DIFY_AGENT_API_TOKEN "$(gen)"
+          # Not free-form: the agent backend requires unpadded base64url that
+          # decodes to exactly 32 bytes.
+          set_var DIFY_AGENT_SERVER_SECRET_KEY "$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')"
+          set_var DIFY_AGENT_LOCAL_SANDBOX_AUTH_TOKEN "$(gen)"
+          set_var DIFY_WEAVIATE_API_KEY "$(gen)"
+          # These two are commented out in .env.example because the compose file
+          # carries working defaults for them; CI shortens them so a backup
+          # cycle happens inside the run rather than in half an hour.
+          printf 'BACKUP_INIT_SLEEP=15s\nBACKUP_INTERVAL=60s\n' >> .env
+          echo "Generated ephemeral .env for CI run from .env.example"
+
+      - name: Upgrade drill — the previous release comes up first, on the volumes this run will upgrade
+        # A fresh stack proves the new image starts. It proves nothing about the
+        # data a deployed host already has: whether the new database image accepts
+        # the old data directory, whether the application's migrations run on a
+        # populated schema. So the previous release is started first, on this
+        # project's volumes, and the ordinary `up -d` below then recreates the
+        # changed containers on top of it - which is exactly what `git pull &&
+        # docker compose up -d` does on a deployed host. Every smoke check that
+        # follows judges the upgraded stack, not a fresh one.
+        run: |
+          prev="$(git ls-remote --tags --sort=-v:refname origin 'v*' | grep -v '\^{}' | head -1 | sed 's|.*refs/tags/||')"
+          if [ -z "$prev" ]; then
+            echo "no previous release: nothing to upgrade from, the fresh start below is the whole test"
+            exit 0
+          fi
+          git fetch --depth=1 --quiet origin "refs/tags/$prev:refs/tags/$prev"
+          if git diff --quiet "$prev" -- "$DOCKER_COMPOSE_FILE"; then
+            echo "the compose file is unchanged since $prev: nothing to drill"
+            exit 0
+          fi
+          git show "$prev:$DOCKER_COMPOSE_FILE" > .upgrade-drill-previous.yml
+          echo "starting $prev on this project's volumes"
+          docker compose -f .upgrade-drill-previous.yml -p "$COMPOSE_PROJECT_NAME" up -d
+          # Healthy means: every container is running and healthy (or running
+          # with no health check), or exited 0 (a one-shot init container).
+          bad=""
+          for _ in $(seq 1 60); do
+            bad="$(docker compose -f .upgrade-drill-previous.yml -p "$COMPOSE_PROJECT_NAME" ps -a --format json \
+              | jq -rs '[.[] | select((.State == "running" and (.Health == "" or .Health == "healthy")) or (.State == "exited" and .ExitCode == 0) | not)] | map("\(.Service):\(.State)/\(.Health)") | join(" ")')"
+            [ -z "$bad" ] && break
+            sleep 10
+          done
+          if [ -n "$bad" ]; then
+            echo "::error::the previous release ($prev) did not come up with this run's .env: $bad. Either the variable contract changed - then the changelog must say so - or $prev was never green here."
+            docker compose -f .upgrade-drill-previous.yml -p "$COMPOSE_PROJECT_NAME" logs --tail 80
+            exit 1
+          fi
+          echo "$prev is up and healthy; stopping it and keeping its volumes"
+          docker compose -f .upgrade-drill-previous.yml -p "$COMPOSE_PROJECT_NAME" down
+          rm -f .upgrade-drill-previous.yml
+          echo "the start below is now an upgrade from $prev"
+
+      - name: Start up services using Docker Compose
+        run: docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" up -d
+
+      - name: Modify /etc/hosts for internal routing
+        run: |
+          echo "127.0.0.1 $APP_HOSTNAME" | sudo tee -a /etc/hosts
+          echo "127.0.0.1 $APP_TRAEFIK_HOSTNAME" | sudo tee -a /etc/hosts
+
+      - name: Print Docker Compose services status
+        run: docker ps
+
+      - name: Wait for the Dify console API through Traefik
+        # /console/api/setup is the first thing a real deployment answers, and
+        # it answers with the setup state rather than merely a status code.
+        # The whole chain has to work for this: Traefik, Dify's own nginx, the
+        # api container, PostgreSQL and Redis, after the api has finished
+        # running its migrations.
+        run: |
+          # shellcheck disable=SC2016
+          timeout 15m bash -c 'while ! curl -sk "https://$APP_HOSTNAME/console/api/setup" | grep -q "\"step\""; do
+            echo "Waiting for Dify..."
+            sleep 15
+          done'
+          curl -sk "https://$APP_HOSTNAME/console/api/setup" -w "\n"
+          curl -skL -o /dev/null -w "Dify console: %{http_code}\n" "https://$APP_HOSTNAME/"
+
+      - name: Verify the worker processes jobs, not merely runs
+        # A Dify with a dead worker looks entirely healthy from outside: the
+        # console answers, apps open, and nothing indexes. The beat schedules
+        # tasks every few seconds, so a worker that is connected to Redis and
+        # consuming says so in its own log within a minute.
+        run: |
+          # shellcheck disable=SC2016
+          timeout 5m bash -c 'until docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" logs worker 2>/dev/null | grep -q "succeeded in"; do
+            echo "Waiting for the worker to complete a scheduled task..."
+            sleep 10
+          done'
+          docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" logs worker 2>/dev/null | grep -m1 "succeeded in"
+
+      - name: Verify the code sandbox answers the api, and only through the proxy
+        # The sandbox executes code a user of the platform wrote. It sits on an
+        # internal network and reaches the internet only through squid; a
+        # template that quietly puts it on the default network looks identical
+        # until somebody uses it to read the metadata service.
+        run: |
+          docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" exec -T api \
+            curl -fsS http://sandbox:8194/health && echo "the sandbox answers the api"
+          nets="$(docker inspect "$(docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" ps -q sandbox)" \
+            --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}')"
+          echo "sandbox networks: $nets"
+          case "$nets" in
+            *dify-network*) echo "::error::the sandbox is on the routable network — the SSRF containment is gone"; exit 1 ;;
+          esac
+          echo "the sandbox is on the internal network only"
+
+      - name: Verify a backup is produced and valid
+        # Log-driven: the file named in a 'backup OK' line is complete by
+        # definition, so this never races a dump that is still being written.
+        run: |
+          # shellcheck disable=SC2016
+          timeout 6m bash -c 'until docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" logs backups 2>/dev/null | grep -q "Database backup OK"; do echo "Waiting for the first backup cycle..."; sleep 10; done'
+          db=$(docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" logs backups 2>/dev/null | grep "Database backup OK" | tail -1 | sed -E 's/.*Database backup OK: ([^ ]+) .*/\1/')
+          echo "Database backup file: $db"
+          docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" exec -T backups sh -c "gunzip -t '$db' && gunzip -c '$db' | head -5 | grep -qE 'PostgreSQL database dump'" && echo "Database backup valid: $db"
+          # shellcheck disable=SC2016
+          timeout 6m bash -c 'until docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" logs backups 2>/dev/null | grep -qE "Data backup (OK|FAILED)"; do echo "Waiting for the library archive..."; sleep 10; done'
+          data=$(docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" logs backups 2>/dev/null | grep "Data backup OK" | tail -1 | sed -E 's/.*Data backup OK: ([^ ]+) .*/\1/')
+          [ -n "$data" ] || { echo "::error::no 'Data backup OK' line - the library archive failed"; exit 1; }
+          docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" exec -T backups sh -c "tar -tzf '$data' > /dev/null" && echo "Library backup valid: $data"
+          docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" logs backups 2>/dev/null | grep -i "backup FAILED" && { echo "::error::the backups log reports a failure"; exit 1; } || true
+
+      - name: Run the backup/restore end-to-end tests
+        # Eight scenarios against the live stack: required-env guard, backup
+        # produced, readable, valid content, library archive readable, failure
+        # detected when the database is down, restore genuinely replaces state,
+        # prune keeps recent files. Same script a maintainer runs locally.
+        run: |
+          chmod +x tests/e2e-backup-restore.sh
+          ./tests/e2e-backup-restore.sh
+
+      - name: Dify answers on the restored database
+        # The end-to-end test above drops and reloads the database underneath a
+        # running stack. A restore that leaves the schema in a state Dify
+        # rejects passes every check up to here and fails the first time
+        # somebody actually needs it.
+        run: |
+          docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" restart api
+          # shellcheck disable=SC2016
+          timeout 10m bash -c 'while ! curl -sk "https://$APP_HOSTNAME/console/api/setup" | grep -q "\"step\""; do
+            echo "Waiting for Dify on the restored database..."
+            sleep 15
+          done'
+          echo "Dify came back on the restored database"
+
+      - name: Wait for the Traefik dashboard to be ready
+        run: |
+          # shellcheck disable=SC2016
+          timeout 5m bash -c 'while ! curl -fsSLk --write-out "%{http_code}" --output /dev/null "https://$APP_TRAEFIK_HOSTNAME" | grep -E "200|401"; do
+            echo "Waiting for the dashboard to be ready..."
+            sleep 10
+          done'
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" logs
+
+      - name: Shutdown Docker Compose services
+        if: always()
+        run: docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" down
