@@ -7,7 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_(no unreleased changes yet)_
+### Changed
+
+- **`langgenius/dify-web:1.17.0` moved to `langgenius/dify-web:1.17.1`.** The freshness check reported the lag; the deploy job booted the stack on the new image before this landed.
+- **`langgenius/dify-agent-local-sandbox:1.17.0` moved to `langgenius/dify-agent-local-sandbox:1.17.1`.** The freshness check reported the lag; the deploy job booted the stack on the new image before this landed.
+- **`langgenius/dify-api:1.17.0` moved to `langgenius/dify-api:1.17.1`.** The freshness check reported the lag; the deploy job booted the stack on the new image before this landed.
+- **`langgenius/dify-agent-backend:1.17.0` moved to `langgenius/dify-agent-backend:1.17.1`.** The freshness check reported the lag; the deploy job booted the stack on the new image before this landed.
 
 ## [1.0.0] - 2026-09-09
 
