@@ -86,7 +86,7 @@ Two cautions Dify's own release notes are explicit about, and which no template 
 
 ## Supply chain trust
 
-Thirteen images pinned to `tag@sha256:<digest>` as interpolation defaults in the compose `x-images` block. `git pull` alone delivers the tested combination; an `*_IMAGE_TAG` variable in `.env` overrides deliberately.
+Dify latest stable (1.17.0). Thirteen images pinned to `tag@sha256:<digest>` as interpolation defaults in the compose `x-images` block. `git pull` alone delivers the tested combination; an `*_IMAGE_TAG` variable in `.env` overrides deliberately.
 
 Five of them are pinned to a version where Dify's own compose file says `:latest` — busybox, nginx, both squid proxies and the plugin daemon's peers. A template that ships a moving tag ships a different stack every day. The squid one mattered for a second reason: the image tagged `latest` there had not been rebuilt in ten months, while the version line this template pins still is.
 
