@@ -219,19 +219,23 @@ jobs:
                    ssrf_proxy/squid.conf.template ssrf_proxy/squid-agent.conf.template \
                    ssrf_proxy/squid-common.conf.template ssrf_proxy/docker-entrypoint.sh \
                    ssrf_proxy/docker-agent-entrypoint.sh; do
-            up="$(curl -fsSL --retry 3 -H "Authorization: Bearer $GH_API_TOKEN" \
-                   -H "Accept: application/vnd.github.raw" \
-                   "https://api.github.com/repos/langgenius/dify/contents/docker/${f}?ref=${version}" || true)"
-            if [ -z "$up" ]; then
+            # Downloaded to a file, not captured in a variable: `$(...)` strips
+            # trailing newlines, and comparing that against a file that has one
+            # reports every file as different by exactly its last byte. This
+            # check runs only on the schedule, so the first time it ran it
+            # failed on all ten files that were byte-identical to upstream.
+            if ! curl -fsSL --retry 3 -H "Authorization: Bearer $GH_API_TOKEN" \
+                   -H "Accept: application/vnd.github.raw" -o /tmp/upstream-vendored \
+                   "https://api.github.com/repos/langgenius/dify/contents/docker/${f}?ref=${version}"; then
               echo "::error::could not read docker/${f} from Dify at ${version}"
               status=1
               continue
             fi
-            if printf '%s' "$up" | diff -q - "$f" > /dev/null 2>&1; then
+            if diff -q /tmp/upstream-vendored "$f" > /dev/null 2>&1; then
               echo "${f} matches upstream at ${version}"
             else
               echo "::error::${f} differs from Dify's own at ${version} — re-vendor it and re-read the routing"
-              printf '%s' "$up" | diff -u - "$f" | head -40 || true
+              diff -u /tmp/upstream-vendored "$f" | head -40 || true
               status=1
             fi
           done

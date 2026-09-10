@@ -375,6 +375,11 @@ services:
     environment:
       HTTP_PORT: 3128
       COREDUMP_DIR: /var/spool/squid
+      # Dify 1.17.1 gave the agent's proxy the same optional private-network
+      # allowlist the other one already had. Both are empty by default, which
+      # is the containment; set them only for a target you meant to reach.
+      SSRF_PROXY_ALLOW_PRIVATE_IPS: ${DIFY_SSRF_PROXY_ALLOW_PRIVATE_IPS:-}
+      SSRF_PROXY_ALLOW_PRIVATE_DOMAINS: ${DIFY_SSRF_PROXY_ALLOW_PRIVATE_DOMAINS:-}
     networks:
       - dify-network
       - local-sandbox-proxy-network

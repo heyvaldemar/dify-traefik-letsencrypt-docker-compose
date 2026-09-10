@@ -7,7 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_(no unreleased changes yet)_
+### Fixed
+
+- **The vendored-configuration check compared the wrong thing.** It captured
+  each upstream file in a shell variable, and `$(...)` strips trailing
+  newlines, so every file differed from its own byte-identical copy by exactly
+  its last byte. The job runs only on the schedule, so its first real run was
+  the morning after it shipped, and it failed on all ten files. It downloads to
+  a file and diffs files now.
+
+### Changed
+
+- **Re-vendored `ssrf_proxy/squid-agent.conf.template` and
+  `ssrf_proxy/docker-agent-entrypoint.sh` at Dify 1.17.1**, and gave
+  `agent_ssrf_proxy` the two variables that release added to it. 1.17.1 gives
+  the agent's proxy the same optional private-network allowlist the other
+  proxy already had: `DIFY_SSRF_PROXY_ALLOW_PRIVATE_IPS` and
+  `DIFY_SSRF_PROXY_ALLOW_PRIVATE_DOMAINS`, both empty by default, which is the
+  containment. This is the change the check exists to catch, and the first one
+  it caught.
 
 ## [1.0.1] - 2026-09-10
 
