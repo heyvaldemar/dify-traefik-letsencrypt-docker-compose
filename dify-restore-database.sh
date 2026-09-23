@@ -18,37 +18,42 @@ cd "$(dirname "$0")"
 
 COMPOSE_FILE="${DOCKER_COMPOSE_FILE:-dify-traefik-letsencrypt-docker-compose.yml}"
 PROJECT="${COMPOSE_PROJECT_NAME:-dify}"
-DB_USER="${DIFY_DB_USER:-postgres}"
-BACKUP_PATH="${POSTGRES_BACKUPS_PATH:-/srv/dify-postgres/backups}"
 
-WHICH=main
+WHICH=main; SELECTED=""
 for arg in "$@"; do
   case "$arg" in
     --plugin) WHICH=plugin ;;
-    *) echo "unknown flag: $arg" >&2; exit 2 ;;
+    -*) echo "unknown flag: $arg" >&2; exit 2 ;;
+    *) SELECTED="$arg" ;;
   esac
 done
-if [ "$WHICH" = "plugin" ]; then
-  DB_NAME="${DIFY_DB_PLUGIN_DATABASE:-dify_plugin}"
-  PREFIX="${PLUGIN_BACKUP_NAME:-dify-plugin-postgres-backup}"
-else
-  DB_NAME="${DIFY_DB_NAME:-dify}"
-  PREFIX="${POSTGRES_BACKUP_NAME:-dify-postgres-backup}"
-fi
 
 dc() { docker compose -f "$COMPOSE_FILE" -p "$PROJECT" "$@"; }
 
 BACKUPS_CONTAINER="$(dc ps -aq backups | head -n 1)"
 [ -n "$BACKUPS_CONTAINER" ] || { echo "the backups container was not found — is the stack up?" >&2; exit 1; }
 
-echo "--> Restoring the $WHICH database ($DB_NAME)"
-echo "--> All available backups:"
-docker exec "$BACKUPS_CONTAINER" sh -c "ls -1 $BACKUP_PATH | grep '^$PREFIX'" || true
+# Every value from the backups container: the environment its loop reads, so
+# a path or name set in .env is the one used here too. This used to read the
+# shell that ran it, which has none of them unless someone exported them.
+env_of() { docker exec "$BACKUPS_CONTAINER" printenv "$1"; }
+DB_USER="$(env_of DIFY_DB_USER)"; BACKUP_PATH="$(env_of POSTGRES_BACKUPS_PATH)"
+if [ "$WHICH" = "plugin" ]; then
+  DB_NAME="$(env_of DIFY_DB_PLUGIN_NAME)"; PREFIX="$(env_of PLUGIN_BACKUP_NAME)"
+else
+  DB_NAME="$(env_of DIFY_DB_NAME)"; PREFIX="$(env_of POSTGRES_BACKUP_NAME)"
+fi
 
-echo "--> Copy and paste the backup name from the list above and press [ENTER]
---> Example: ${PREFIX}-YYYY-MM-DD_hh-mm.gz"
-echo -n "--> "
-read -r SELECTED
+echo "--> Restoring the $WHICH database ($DB_NAME)"
+if [ -z "$SELECTED" ]; then
+  echo "--> All available backups:"
+  docker exec "$BACKUPS_CONTAINER" sh -c "ls -1 $BACKUP_PATH | grep '^$PREFIX'" || true
+
+  echo "--> Copy and paste the backup name from the list above and press [ENTER]
+  --> Example: ${PREFIX}-YYYY-MM-DD_hh-mm.gz"
+  echo -n "--> "
+  read -r SELECTED
+fi
 [ -n "$SELECTED" ] || { echo "nothing selected, nothing restored" >&2; exit 1; }
 
 if ! docker exec "$BACKUPS_CONTAINER" sh -c "gzip -t '${BACKUP_PATH}/${SELECTED}'"; then
@@ -67,6 +72,10 @@ for svc in api api_websocket worker worker_beat plugin_daemon; do
   docker stop "$cid" > /dev/null
 done
 echo "--> Stopped:$STOPPED"
+restart() {  # started again whatever happens
+  for svc in $STOPPED; do c="$(dc ps -aq "$svc" | head -n 1)"; [ -n "$c" ] && docker start "$c" > /dev/null; done
+}
+trap restart EXIT
 
 echo "--> Restoring..."
 docker exec "$BACKUPS_CONTAINER" bash -c "set -o pipefail

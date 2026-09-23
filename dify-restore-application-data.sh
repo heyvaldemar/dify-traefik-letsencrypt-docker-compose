@@ -21,20 +21,29 @@ cd "$(dirname "$0")"
 
 COMPOSE_FILE="${DOCKER_COMPOSE_FILE:-dify-traefik-letsencrypt-docker-compose.yml}"
 PROJECT="${COMPOSE_PROJECT_NAME:-dify}"
-BACKUP_PATH="${DATA_BACKUPS_PATH:-/srv/dify-application-data/backups}"
 
 dc() { docker compose -f "$COMPOSE_FILE" -p "$PROJECT" "$@"; }
 
 BACKUPS_CONTAINER="$(dc ps -aq backups | head -n 1)"
 [ -n "$BACKUPS_CONTAINER" ] || { echo "the backups container was not found — is the stack up?" >&2; exit 1; }
 
-echo "--> All available application data backups:"
-docker exec "$BACKUPS_CONTAINER" sh -c "ls -1 $BACKUP_PATH" || true
+# Every value from the backups container: the environment its loop reads, so
+# a path or name set in .env is the one used here too. This used to read the
+# shell that ran it, which has none of them unless someone exported them.
+env_of() { docker exec "$BACKUPS_CONTAINER" printenv "$1"; }
+BACKUP_PATH="$(env_of DATA_BACKUPS_PATH)"; DATA="$(env_of DATA_PATH)"; PLUGIN_DATA="$(env_of PLUGIN_DATA_PATH)"
+for d in "$DATA" "$PLUGIN_DATA"; do case "$d" in ""|/) echo "a data path is '$d'; refusing to clear it" >&2; exit 1 ;; esac; done
 
-echo "--> Copy and paste the backup name from the list above and press [ENTER]
---> Example: dify-application-data-backup-YYYY-MM-DD_hh-mm.tar.gz"
-echo -n "--> "
-read -r SELECTED
+SELECTED="${1:-}"
+if [ -z "$SELECTED" ]; then
+  echo "--> All available application data backups:"
+  docker exec "$BACKUPS_CONTAINER" sh -c "ls -1 $BACKUP_PATH" || true
+
+  echo "--> Copy and paste the backup name from the list above and press [ENTER]
+  --> Example: dify-application-data-backup-YYYY-MM-DD_hh-mm.tar.gz"
+  echo -n "--> "
+  read -r SELECTED
+fi
 [ -n "$SELECTED" ] || { echo "nothing selected, nothing restored" >&2; exit 1; }
 
 if ! docker exec "$BACKUPS_CONTAINER" sh -c "tar -tzf '${BACKUP_PATH}/${SELECTED}' > /dev/null"; then
@@ -51,13 +60,17 @@ for svc in api api_websocket worker plugin_daemon; do
   docker stop "$cid" > /dev/null
 done
 echo "--> Stopped:$STOPPED"
+restart() {  # started again whatever happens
+  for svc in $STOPPED; do c="$(dc ps -aq "$svc" | head -n 1)"; [ -n "$c" ] && docker start "$c" > /dev/null; done
+}
+trap restart EXIT
 
 echo "--> Restoring application data..."
 # The archive stores paths relative to /, so it extracts there. Both trees are
 # replaced wholesale: a file the archive does not carry is a file the database
 # it belongs with does not know about either.
 docker exec "$BACKUPS_CONTAINER" bash -c "set -o pipefail
-  rm -rf '${DATA_PATH:-/app/api/storage}'/* '${PLUGIN_DATA_PATH:-/app/plugin-storage}'/*
+  find '$DATA' '$PLUGIN_DATA' -mindepth 1 -delete
   tar -zxpf '${BACKUP_PATH}/${SELECTED}' -C /"
 echo "--> Application data recovery completed."
 

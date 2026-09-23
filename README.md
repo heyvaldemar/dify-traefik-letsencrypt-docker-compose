@@ -126,6 +126,8 @@ chmod +x ./*.sh
 ./dify-restore-application-data.sh          # uploaded documents and plugin packages
 ```
 
+Each lists the backups and asks, or takes a file name as its argument; both read every value from the running backups container, and CI runs both on every push.
+
 **The knowledge-base embeddings in Weaviate are not in these archives, on purpose.** A `tar` of a running vector store is a copy that may not open, and shipping something that looks like a backup and is not is worse than saying so. After restoring, re-index the affected knowledge bases from the Dify console: the source documents are in the application data archive, so nothing is lost but the model calls. If you need point-in-time vector backups, Weaviate's own backup module is the tool for it.
 
 ## Resource limits
