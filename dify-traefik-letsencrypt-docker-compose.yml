@@ -25,7 +25,7 @@ x-images:
   agent-backend: &agent-backend-image ${DIFY_AGENT_BACKEND_IMAGE_TAG:-langgenius/dify-agent-backend:${DIFY_AGENT_BACKEND_IMAGE_VERSION:-1.17.1@sha256:a30c039bbead65d7fd8baf8c53fc867373f515c5721e46070ce03ed04c5f1e32}}
   squid: &squid-image ${DIFY_SQUID_IMAGE_TAG:-ubuntu/squid:${DIFY_SQUID_IMAGE_VERSION:-6.6-24.04_edge@sha256:8a3baed477e2c282ab8aa5edad442f69873246964f225c5c2ae8364b6610963c}}
   nginx: &nginx-image ${DIFY_NGINX_IMAGE_TAG:-nginx:${DIFY_NGINX_IMAGE_VERSION:-1.29@sha256:1881968aff6f7cdcc4b888c00a11f4ce241ad7ec957e0cb4a9e19e93a3ff87ea}}
-  busybox: &busybox-image ${DIFY_BUSYBOX_IMAGE_TAG:-busybox:${DIFY_BUSYBOX_IMAGE_VERSION:-1.37@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0}}
+  busybox: &busybox-image ${DIFY_BUSYBOX_IMAGE_TAG:-busybox:${DIFY_BUSYBOX_IMAGE_VERSION:-1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e}}
 
 # Every variable Dify reads comes from .env, which is how upstream configures
 # these images: the configuration surface is three hundred variables, and
