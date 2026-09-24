@@ -1,0 +1,216 @@
+name: Clean-Machine Restore
+
+# THE HOST IS GONE. What an operator has left is what they kept off it: the
+# backup files and the .env. This drill takes those from one runner that ran
+# the PREVIOUS release, and brings the CURRENT release back from them on a
+# second runner that has never run this stack - then measures how long that
+# took, from the first command on the empty machine to the application
+# answering with the data it had. The ordinary deployment verification restores
+# on the same host and the same version; this is the case it cannot reach.
+on:
+  schedule:
+    - cron: "40 4 * * 0"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "tests/dr-drill.sh"
+      - ".github/workflows/dr-drill.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dr-drill-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  before:
+    name: The host that dies runs the previous release and is backed up
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      NETWORK_ONE: dify-network
+      NETWORK_TWO: traefik-network
+      DOCKER_COMPOSE_FILE: dify-traefik-letsencrypt-docker-compose.yml
+      APP_HOSTNAME: dify.heyvaldemardm.net
+      APP_TRAEFIK_HOSTNAME: traefik.dify.heyvaldemardm.net
+      COMPOSE_PROJECT_NAME: dify
+      APP_URL: "https://$APP_HOSTNAME/console/api/setup"
+      APP_OK: "200"
+      DB_ENGINE: "postgres"
+      DB_HOST: "db_postgres"
+      DB_NAME_ENV: "DIFY_DB_NAME"
+      DB_USER_ENV: "DIFY_DB_USER"
+      DB_PASS_ENV: ""
+      DB_DIR_ENV: "POSTGRES_BACKUPS_PATH"
+      DATA_DIR_ENV: "DATA_BACKUPS_PATH"
+      DATA_PATH_ENV: "DATA_PATH"
+      DB_FILE_MATCH: "^$POSTGRES_BACKUP_NAME-.*[0-9]\\.gz$"
+      DATA_FILE_MATCH: ""
+      DB_RESTORE: "./dify-restore-database.sh \"$F\" && ./dify-restore-database.sh --plugin \"$(ls -1 dr-out/POSTGRES_BACKUPS_PATH | grep -E \"^dify-plugin-postgres-backup-.*[0-9]\\.gz$\" | sort | tail -n 1)\""
+      DATA_RESTORE: "./dify-restore-application-data.sh \"$F\""
+      DR_DIAG: ""
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: The release this host was running
+        # The newest release whose stack differs from main's, so the restore
+        # below crosses a version: an old backup brought back into the release
+        # that replaced it. Picking by tag order alone chose main's own release
+        # whenever main carried a commit that did not touch the stack, and the
+        # first run "crossed" from v1.9.1 to v1.9.1. A template whose every
+        # release runs the same stack drills its newest one: the host is still
+        # gone, and the page says from and to plainly.
+        run: |
+          from=""
+          for t in $(git tag --sort=-v:refname --list 'v*'); do
+            if ! git diff --quiet "$t" HEAD -- "$DOCKER_COMPOSE_FILE"; then from="$t"; break; fi
+          done
+          [ -n "$from" ] || from="$(git tag --sort=-v:refname --list 'v*' | head -n 1)"
+          [ -n "$from" ] || { echo "::error::no release to take the backup on"; exit 1; }
+          echo "DR_FROM=$from" >> "$GITHUB_ENV"
+          echo "the backup is taken on $from"
+
+      - name: Create necessary Docker networks
+        run: |
+          docker network create "$NETWORK_ONE" || true
+          docker network create "$NETWORK_TWO" || true
+
+      - name: Generate test .env with ephemeral credentials
+        # .env.example is COPIED, not hand-written: Dify reads its
+        # configuration from the env file, so a variable missing from
+        # .env.example is a variable missing from every deployment built from
+        # this template. Copying it here means the file itself is what CI
+        # boots, and an omission fails the run instead of the reader.
+        # Only the secrets and the hostname are replaced, with throwaway
+        # values; no *_IMAGE_TAG on purpose, so CI tests exactly the pins the
+        # template ships.
+        run: |
+          cp .env.example .env
+          gen() { openssl rand -base64 42 | tr -d '\n/+=' | head -c 42; }
+          set_var() {
+            # Replace the placeholder in place, keeping the file's order and
+            # its comments, so a missing key is a visible failure rather than
+            # a silent append.
+            grep -q "^$1=" .env || { echo "::error::$1 is not in .env.example"; exit 1; }
+            python3 - "$1" "$2" <<'PY'
+          import io, sys
+          key, val = sys.argv[1], sys.argv[2]
+          out = []
+          for line in io.open(".env", encoding="utf-8").read().splitlines():
+              out.append("%s=%s" % (key, val) if line.startswith(key + "=") else line)
+          io.open(".env", "w", encoding="utf-8").write("\n".join(out) + "\n")
+          PY
+          }
+          set_var DIFY_HOSTNAME "${APP_HOSTNAME}"
+          set_var TRAEFIK_HOSTNAME "${APP_TRAEFIK_HOSTNAME}"
+          set_var TRAEFIK_ACME_EMAIL "ci@example.com"
+          # shellcheck disable=SC2016  # the $$ must reach .env literally: compose reads it as one $
+          set_var TRAEFIK_BASIC_AUTH 'traefikadmin:$$2y$$10$$sMzJfirKC75x/hVpiINeZOiSm.Jkity9cn4KwNkRvO7hSQVFc5FLO'
+          set_var DIFY_SECRET_KEY "$(gen)"
+          set_var DIFY_DB_PASSWORD "$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)"
+          set_var DIFY_REDIS_PASSWORD "$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)"
+          set_var DIFY_SANDBOX_API_KEY "$(gen)"
+          set_var DIFY_PLUGIN_DAEMON_KEY "$(gen)"
+          set_var DIFY_PLUGIN_INNER_API_KEY "$(gen)"
+          set_var DIFY_AGENT_API_TOKEN "$(gen)"
+          # Not free-form: the agent backend requires unpadded base64url that
+          # decodes to exactly 32 bytes.
+          set_var DIFY_AGENT_SERVER_SECRET_KEY "$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')"
+          set_var DIFY_AGENT_LOCAL_SANDBOX_AUTH_TOKEN "$(gen)"
+          set_var DIFY_WEAVIATE_API_KEY "$(gen)"
+          # These two are commented out in .env.example because the compose file
+          # carries working defaults for them; CI shortens them so a backup
+          # cycle happens inside the run rather than in half an hour.
+          printf 'BACKUP_INIT_SLEEP=15s\nBACKUP_INTERVAL=60s\n' >> .env
+          echo "Generated ephemeral .env for CI run from .env.example"
+
+      - name: Modify /etc/hosts for internal routing
+        run: |
+          echo "127.0.0.1 $APP_HOSTNAME" | sudo tee -a /etc/hosts
+          echo "127.0.0.1 $APP_TRAEFIK_HOSTNAME" | sudo tee -a /etc/hosts
+
+      - name: Run the previous release, write the markers, take the backup
+        run: ./tests/dr-drill.sh before
+
+      - name: Keep only what an operator keeps off the host
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dr-offsite
+          path: dr-out
+          retention-days: 1
+          include-hidden-files: true
+          if-no-files-found: error
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose -f .dr-from.yml -p "$COMPOSE_PROJECT_NAME" logs --tail 200 || true
+
+  after:
+    name: A clean machine brings the current release back from those files
+    needs: before
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      NETWORK_ONE: dify-network
+      NETWORK_TWO: traefik-network
+      DOCKER_COMPOSE_FILE: dify-traefik-letsencrypt-docker-compose.yml
+      APP_HOSTNAME: dify.heyvaldemardm.net
+      APP_TRAEFIK_HOSTNAME: traefik.dify.heyvaldemardm.net
+      COMPOSE_PROJECT_NAME: dify
+      APP_URL: "https://$APP_HOSTNAME/console/api/setup"
+      APP_OK: "200"
+      DB_ENGINE: "postgres"
+      DB_HOST: "db_postgres"
+      DB_NAME_ENV: "DIFY_DB_NAME"
+      DB_USER_ENV: "DIFY_DB_USER"
+      DB_PASS_ENV: ""
+      DB_DIR_ENV: "POSTGRES_BACKUPS_PATH"
+      DATA_DIR_ENV: "DATA_BACKUPS_PATH"
+      DATA_PATH_ENV: "DATA_PATH"
+      DB_FILE_MATCH: "^$POSTGRES_BACKUP_NAME-.*[0-9]\\.gz$"
+      DATA_FILE_MATCH: ""
+      DB_RESTORE: "./dify-restore-database.sh \"$F\" && ./dify-restore-database.sh --plugin \"$(ls -1 dr-out/POSTGRES_BACKUPS_PATH | grep -E \"^dify-plugin-postgres-backup-.*[0-9]\\.gz$\" | sort | tail -n 1)\""
+      DATA_RESTORE: "./dify-restore-application-data.sh \"$F\""
+      DR_DIAG: ""
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Create necessary Docker networks
+        run: |
+          docker network create "$NETWORK_ONE" || true
+          docker network create "$NETWORK_TWO" || true
+
+      - name: Modify /etc/hosts for internal routing
+        run: |
+          echo "127.0.0.1 $APP_HOSTNAME" | sudo tee -a /etc/hosts
+          echo "127.0.0.1 $APP_TRAEFIK_HOSTNAME" | sudo tee -a /etc/hosts
+
+      - name: The files kept off the dead host
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dr-offsite
+          path: dr-out
+
+      - name: Restore on the clean machine, and time it
+        run: ./tests/dr-drill.sh after
+
+      - name: Keep the measured result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dr-result
+          path: dr-result.json
+          retention-days: 90
+          if-no-files-found: ignore
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose -f "$DOCKER_COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" logs --tail 200
