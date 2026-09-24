@@ -96,6 +96,23 @@ Two override levels exist per image. `<PREFIX>_IMAGE_VERSION` in `.env` swaps on
 
 The daily `check-pin-freshness` CI job re-resolves each pin against its registry, compares the pinned Dify and Traefik versions against the latest upstream releases, and diffs the vendored configuration against Dify's own. GitHub Actions are pinned by commit SHA; Dependabot keeps those fresh.
 
+### Verify what you deploy
+
+Every release from v1.0.5 on carries three files made on GitHub's runner with a short-lived identity and no stored key: `dify-traefik-letsencrypt-docker-compose-<tag>.tar.gz`, a `git archive` of exactly the tree the tag points at; `dify-traefik-letsencrypt-docker-compose-<tag>.tar.gz.sigstore.json`, a keyless [Sigstore](https://www.sigstore.dev/) signature over it; and `dify-traefik-letsencrypt-docker-compose-<tag>.intoto.jsonl`, [SLSA](https://slsa.dev/) build provenance from the SLSA generator. To check them with nothing from this repository trusted:
+
+```bash
+cosign verify-blob dify-traefik-letsencrypt-docker-compose-<tag>.tar.gz \
+  --bundle dify-traefik-letsencrypt-docker-compose-<tag>.tar.gz.sigstore.json \
+  --certificate-identity-regexp '^https://github.com/heyvaldemar/dify-traefik-letsencrypt-docker-compose/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+
+slsa-verifier verify-artifact dify-traefik-letsencrypt-docker-compose-<tag>.tar.gz \
+  --provenance-path dify-traefik-letsencrypt-docker-compose-<tag>.intoto.jsonl \
+  --source-uri github.com/heyvaldemar/dify-traefik-letsencrypt-docker-compose
+```
+
+Add `--source-tag <tag>` for a release published after 24 September 2026, which is signed by the run that published it. The five releases before that date were signed by a run started by hand on `main`, so their provenance names the branch, not the tag; the archive is still the tag's tree, and the signature still belongs to this repository's workflow. The workflow that makes them is [`release-assets.yml`](.github/workflows/release-assets.yml).
+
 ## Configuration lives in .env, deliberately
 
 Everywhere else in this fleet, `.env` holds only secrets and deliberate overrides, and every other setting is a compose interpolation default. Not here.
