@@ -1,6 +1,7 @@
 # Dify + Traefik + Let's Encrypt on Docker Compose
 
 [![Deployment Verification](https://github.com/heyvaldemar/dify-traefik-letsencrypt-docker-compose/actions/workflows/deployment-verification.yml/badge.svg?branch=main)](https://github.com/heyvaldemar/dify-traefik-letsencrypt-docker-compose/actions/workflows/deployment-verification.yml)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14918/badge)](https://www.bestpractices.dev/projects/14918)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 This repository deploys Dify (an open-source platform for building LLM applications, agents and workflows) behind Traefik with automatic Let's Encrypt TLS, backed by PostgreSQL, Redis and Weaviate, with scheduled backups of both databases and the application data, and companion restore scripts.
