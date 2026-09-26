@@ -830,9 +830,9 @@ services:
       # A workflow run is one long request and can take an hour by default.
       # Traefik's own timeouts have to be at least as generous as Dify's, or
       # the proxy cuts off a run the platform considers healthy.
-      - "--entrypoints.websecure.transport.respondingTimeouts.readTimeout=${DIFY_REQUEST_TIMEOUT:-3600s}"
-      - "--entrypoints.websecure.transport.respondingTimeouts.writeTimeout=${DIFY_REQUEST_TIMEOUT:-3600s}"
-      - "--entrypoints.websecure.transport.respondingTimeouts.idleTimeout=${DIFY_REQUEST_TIMEOUT:-3600s}"
+      - "--entrypoints.websecure.transport.respondingTimeouts.readTimeout=${TRAEFIK_READ_TIMEOUT:-${DIFY_REQUEST_TIMEOUT:-3600s}}"
+      - "--entrypoints.websecure.transport.respondingTimeouts.writeTimeout=${TRAEFIK_WRITE_TIMEOUT:-${DIFY_REQUEST_TIMEOUT:-3600s}}"
+      - "--entrypoints.websecure.transport.respondingTimeouts.idleTimeout=${TRAEFIK_IDLE_TIMEOUT:-${DIFY_REQUEST_TIMEOUT:-3600s}}"
       # Enable the Docker provider to detect containers and their labels
       - "--providers.docker=true"
       # Point Traefik to the Docker socket
