@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_(no unreleased changes yet)_
+### Security
+
+- **`nginx/proxy.conf.template` re-vendored from Dify 1.18.0.** Dify's own now sends `X-Forwarded-For` as the address nginx took the request from (`$remote_addr`), no longer the chain the client sent with it (langgenius/dify 8ac58b0, 2026-10-12). The images moved to 1.18.0 in 1.1.7 and this file did not; the freshness check found it. Nothing changes for a deployment from this template: Dify reads the header only with `RESPECT_XFORWARD_HEADERS_ENABLED`, which is off by default and not set here, and with it on, its ProxyFix trusts one hop, Traefik's, before and after.
 
 ## [1.1.7] - 2026-10-24
 
