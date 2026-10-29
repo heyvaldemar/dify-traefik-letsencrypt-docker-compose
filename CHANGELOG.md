@@ -7,7 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_(no unreleased changes yet)_
+### Security
+
+- **`redis:7.4-alpine` was rebuilt upstream**; the pin moved from `sha256:6ba19c50b567…` to `sha256:8da19c7399dc…`. Same version, same tag, a rebuilt base image — the usual shape of a security fix in a base layer.
+- **`busybox:1.37` was rebuilt upstream**; the pin moved from `sha256:bdf57e528e45…` to `sha256:a7dbc319b143…`. Same version, same tag, a rebuilt base image — the usual shape of a security fix in a base layer.
 
 ## [1.1.9] - 2026-10-27
 

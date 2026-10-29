@@ -15,7 +15,7 @@
 x-images:
   traefik: &traefik-image ${TRAEFIK_IMAGE_TAG:-traefik:${TRAEFIK_IMAGE_VERSION:-3.7@sha256:1336e85aaed293bd63d005086e0dd013b04078b26aaeb1c18b26a2f928af7e65}}
   postgres: &postgres-image ${DIFY_POSTGRES_IMAGE_TAG:-postgres:${DIFY_POSTGRES_IMAGE_VERSION:-15-alpine@sha256:54e0dd8e8cddcdbb9156c2486eed5a43eccb7214d7c6828097d41ce049fb3984}}
-  redis: &redis-image ${DIFY_REDIS_IMAGE_TAG:-redis:${DIFY_REDIS_IMAGE_VERSION:-7.4-alpine@sha256:6ba19c50b56777f5c11c58eff8ddb69d0d5f27ba131cffb63f180ccfd43c66af}}
+  redis: &redis-image ${DIFY_REDIS_IMAGE_TAG:-redis:${DIFY_REDIS_IMAGE_VERSION:-7.4-alpine@sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f}}
   weaviate: &weaviate-image ${DIFY_WEAVIATE_IMAGE_TAG:-semitechnologies/weaviate:${DIFY_WEAVIATE_IMAGE_VERSION:-1.27.0@sha256:53fa576934f8e2c9130dc3a61a0f9b7d9330fe0ff456ccb37db05d03b700abc9}}
   api: &api-image ${DIFY_API_IMAGE_TAG:-langgenius/dify-api:${DIFY_API_IMAGE_VERSION:-1.18.0@sha256:0120970fb4ea59aa328d63b7dda635cccc071efb8aae470cd07115a026dbffd3}}
   web: &web-image ${DIFY_WEB_IMAGE_TAG:-langgenius/dify-web:${DIFY_WEB_IMAGE_VERSION:-1.18.0@sha256:e55a6bf1addf109c3655567663f906624f0980061efed864e0f07d23c71fa385}}
@@ -25,7 +25,7 @@ x-images:
   agent-backend: &agent-backend-image ${DIFY_AGENT_BACKEND_IMAGE_TAG:-langgenius/dify-agent-backend:${DIFY_AGENT_BACKEND_IMAGE_VERSION:-1.18.0@sha256:80d638d7114bb0fbe954952e37da1f464b61969ff870c0b173963b9f2b91e06e}}
   squid: &squid-image ${DIFY_SQUID_IMAGE_TAG:-ubuntu/squid:${DIFY_SQUID_IMAGE_VERSION:-6.6-24.04_edge@sha256:8a3baed477e2c282ab8aa5edad442f69873246964f225c5c2ae8364b6610963c}}
   nginx: &nginx-image ${DIFY_NGINX_IMAGE_TAG:-nginx:${DIFY_NGINX_IMAGE_VERSION:-1.29@sha256:1881968aff6f7cdcc4b888c00a11f4ce241ad7ec957e0cb4a9e19e93a3ff87ea}}
-  busybox: &busybox-image ${DIFY_BUSYBOX_IMAGE_TAG:-busybox:${DIFY_BUSYBOX_IMAGE_VERSION:-1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e}}
+  busybox: &busybox-image ${DIFY_BUSYBOX_IMAGE_TAG:-busybox:${DIFY_BUSYBOX_IMAGE_VERSION:-1.37@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec}}
 
 # Every variable Dify reads comes from .env, which is how upstream configures
 # these images: the configuration surface is three hundred variables, and
