@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_(no unreleased changes yet)_
+
+## [1.1.13] - 2026-11-05
+
 ### Changed
 
 - **`langgenius/dify-web:1.18.0` moved to `langgenius/dify-web:1.19.0`.** The freshness check reported the lag; the deploy job booted the stack on the new image before this landed.
@@ -254,7 +258,8 @@ does not cost one there:
 - **The plugin debugging port is not published.** Upstream's compose file
   publishes 5003; a production deployment has no use for it.
 
-[Unreleased]: https://github.com/heyvaldemar/dify-traefik-letsencrypt-docker-compose/compare/v1.1.12...HEAD
+[Unreleased]: https://github.com/heyvaldemar/dify-traefik-letsencrypt-docker-compose/compare/v1.1.13...HEAD
+[1.1.13]: https://github.com/heyvaldemar/dify-traefik-letsencrypt-docker-compose/compare/v1.1.12...v1.1.13
 [1.1.12]: https://github.com/heyvaldemar/dify-traefik-letsencrypt-docker-compose/compare/v1.1.11...v1.1.12
 [1.1.11]: https://github.com/heyvaldemar/dify-traefik-letsencrypt-docker-compose/compare/v1.1.10...v1.1.11
 [1.1.10]: https://github.com/heyvaldemar/dify-traefik-letsencrypt-docker-compose/compare/v1.1.9...v1.1.10
