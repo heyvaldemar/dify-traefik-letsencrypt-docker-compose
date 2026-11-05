@@ -64,7 +64,7 @@ Every one of them is required here. The stack refuses to start until it has a va
 
 ## Dify's own nginx is kept, with Traefik in front
 
-Dify ships a reverse proxy carrying an eleven-entry routing table: `/console/api`, `/api`, `/v1`, `/openapi`, `/files`, `/mcp` and `/triggers` to the api, `/socket.io/` to the websocket worker, `/explore` and everything else to the web frontend, and `/e/` to the plugin daemon with the public webhook URL in a request header.
+Dify ships a reverse proxy carrying a twelve-entry routing table: `/console/api`, `/api`, `/v1`, `/openapi`, `/files`, `/mcp`, `/triggers` and `/callbacks/human-input/v2/im/` to the api, `/socket.io/` to the websocket worker, `/explore` and everything else to the web frontend, and `/e/` to the plugin daemon with the public webhook URL in a request header.
 
 Reproducing that in Traefik labels would be a fork of Dify's routing that drifts on every release, and one of its rules cannot be reproduced at all: the `Dify-Hook-Url` header is built per request from the scheme, host and path, which a static label cannot express. So Traefik terminates TLS and forwards to nginx, and Dify's routing stays Dify's business.
 

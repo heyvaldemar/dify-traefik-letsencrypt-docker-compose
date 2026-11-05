@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_(no unreleased changes yet)_
+### Fixed
+
+- **The Dify 1.19.0 upgrade in 1.1.13 was half done; this finishes it.** 1.1.13 moved the api, web, Agent Backend and Local sandbox images to 1.19.0 and left two things at 1.18.0. Dify's upgrade guide says to move the components together.
+  - **The plugin daemon moves from `0.6.10-local` to `0.6.14-local`**, the version 1.19.0 ships with.
+  - **`nginx/nginx.conf.template`, `nginx/proxy.conf.template` and `nginx/conf.d/default.conf.template` are re-vendored from Dify 1.19.0.** The routing table gains `/callbacks/human-input/v2/im/` to the api, which 1.1.13 sent to the web frontend instead.
+  - **nginx forwards the `Host` header the client sent, and its port only when it carries one.** On 1.1.13 nginx sent its own internal port as `X-Forwarded-Port`.
+  - Upgrading from 1.1.13 needs no data step: the database already migrated to 1.19.0 when 1.1.13 started. Do not go back to 1.1.12 after running 1.1.13, because Dify does not support downgrading a migrated database.
 
 ## [1.1.13] - 2026-11-05
 
