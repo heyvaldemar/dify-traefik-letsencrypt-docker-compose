@@ -7,7 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_(no unreleased changes yet)_
+### Changed
+
+- **`semitechnologies/weaviate:1.27.0` moved to `semitechnologies/weaviate:1.27.27`.** The freshness check reported the lag; the deploy job booted the stack on the new image before this landed.
+- **`langgenius/dify-plugin-daemon:0.6.14-local` moved to `langgenius/dify-plugin-daemon:0.6.15-local`.** The freshness check reported the lag; the deploy job booted the stack on the new image before this landed.
 
 ## [1.1.15] - 2026-11-06
 
