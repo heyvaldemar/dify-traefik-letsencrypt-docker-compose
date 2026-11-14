@@ -13,7 +13,7 @@
 # there has not been rebuilt since November 2025, while the `6.6-24.04_edge`
 # line still is.
 x-images:
-  traefik: &traefik-image ${TRAEFIK_IMAGE_TAG:-traefik:${TRAEFIK_IMAGE_VERSION:-3.7@sha256:180aa0fae8ca0893336363635bb058303846c2d34819354ed9a1ab46c8167c2c}}
+  traefik: &traefik-image ${TRAEFIK_IMAGE_TAG:-traefik:${TRAEFIK_IMAGE_VERSION:-3.7@sha256:b7b1b31e6440de0b1f7c4e0f6cf0a0f3f004866761d30c025fe00c80daaf7d9c}}
   postgres: &postgres-image ${DIFY_POSTGRES_IMAGE_TAG:-postgres:${DIFY_POSTGRES_IMAGE_VERSION:-15-alpine@sha256:fc41cfa8a90c09e84dd723ee764be4b2f59ba6c98b1e5b3fca540adddf68a5ba}}
   redis: &redis-image ${DIFY_REDIS_IMAGE_TAG:-redis:${DIFY_REDIS_IMAGE_VERSION:-7.4-alpine@sha256:7b1753b4c5ad8458906c272a8132b8c15f5557b000379eb115fb239706a384b7}}
   weaviate: &weaviate-image ${DIFY_WEAVIATE_IMAGE_TAG:-semitechnologies/weaviate:${DIFY_WEAVIATE_IMAGE_VERSION:-1.27.27@sha256:a790724759d7f52bc4c390a952035e657b318ecafcb0ad68b9187006799d8a25}}
