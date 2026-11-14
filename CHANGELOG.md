@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_(no unreleased changes yet)_
+
+## [1.1.20] - 2026-11-14
+
 ### Security
 
 - **`traefik:3.7` was rebuilt upstream**; the pin moved from `sha256:180aa0fae8ca…` to `sha256:b7b1b31e6440…`. Same version, same tag, a rebuilt base image — the usual shape of a security fix in a base layer.
@@ -307,7 +311,8 @@ does not cost one there:
 - **The plugin debugging port is not published.** Upstream's compose file
   publishes 5003; a production deployment has no use for it.
 
-[Unreleased]: https://github.com/heyvaldemar/dify-traefik-letsencrypt-docker-compose/compare/v1.1.19...HEAD
+[Unreleased]: https://github.com/heyvaldemar/dify-traefik-letsencrypt-docker-compose/compare/v1.1.20...HEAD
+[1.1.20]: https://github.com/heyvaldemar/dify-traefik-letsencrypt-docker-compose/compare/v1.1.19...v1.1.20
 [1.1.19]: https://github.com/heyvaldemar/dify-traefik-letsencrypt-docker-compose/compare/v1.1.18...v1.1.19
 [1.1.18]: https://github.com/heyvaldemar/dify-traefik-letsencrypt-docker-compose/compare/v1.1.17...v1.1.18
 [1.1.17]: https://github.com/heyvaldemar/dify-traefik-letsencrypt-docker-compose/compare/v1.1.16...v1.1.17
