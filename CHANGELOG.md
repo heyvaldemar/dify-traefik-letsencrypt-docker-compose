@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_(no unreleased changes yet)_
+### Security
+
+- **`ubuntu/squid:6.6-24.04_edge` was rebuilt upstream**; the pin moved from `sha256:8a3baed477e2…` to `sha256:d9c34c5ab74c…`. Same version, same tag, a rebuilt base image — the usual shape of a security fix in a base layer.
 
 ## [1.1.20] - 2026-11-14
 

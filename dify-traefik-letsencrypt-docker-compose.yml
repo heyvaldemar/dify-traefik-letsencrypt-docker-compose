@@ -23,7 +23,7 @@ x-images:
   local-sandbox: &local-sandbox-image ${DIFY_LOCAL_SANDBOX_IMAGE_TAG:-langgenius/dify-agent-local-sandbox:${DIFY_LOCAL_SANDBOX_IMAGE_VERSION:-1.19.0@sha256:ae762c685009e5a7d036be3bd903724f697d92ca4c17256398c1a2caaa64140c}}
   plugin-daemon: &plugin-daemon-image ${DIFY_PLUGIN_DAEMON_IMAGE_TAG:-langgenius/dify-plugin-daemon:${DIFY_PLUGIN_DAEMON_IMAGE_VERSION:-0.6.15-local@sha256:14aebd55ff37456dcf4ab8e5a92617eeef767e0e239a13c86083287ee1c1a338}}
   agent-backend: &agent-backend-image ${DIFY_AGENT_BACKEND_IMAGE_TAG:-langgenius/dify-agent-backend:${DIFY_AGENT_BACKEND_IMAGE_VERSION:-1.19.0@sha256:005e04e83a54623fff131072000e76e99480aabc2773a08e848cc8aabf2eaf4c}}
-  squid: &squid-image ${DIFY_SQUID_IMAGE_TAG:-ubuntu/squid:${DIFY_SQUID_IMAGE_VERSION:-6.6-24.04_edge@sha256:8a3baed477e2c282ab8aa5edad442f69873246964f225c5c2ae8364b6610963c}}
+  squid: &squid-image ${DIFY_SQUID_IMAGE_TAG:-ubuntu/squid:${DIFY_SQUID_IMAGE_VERSION:-6.6-24.04_edge@sha256:d9c34c5ab74c6dd41cf1070d9b4221aac072e67e983527ca2d41512958f77506}}
   nginx: &nginx-image ${DIFY_NGINX_IMAGE_TAG:-nginx:${DIFY_NGINX_IMAGE_VERSION:-1.29@sha256:1881968aff6f7cdcc4b888c00a11f4ce241ad7ec957e0cb4a9e19e93a3ff87ea}}
   busybox: &busybox-image ${DIFY_BUSYBOX_IMAGE_TAG:-busybox:${DIFY_BUSYBOX_IMAGE_VERSION:-1.37@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec}}
 
