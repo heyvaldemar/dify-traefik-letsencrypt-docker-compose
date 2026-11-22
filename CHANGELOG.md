@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_(no unreleased changes yet)_
+
+## [1.2.0] - 2026-11-22
+
 ### Changed
 
 - **Dify 1.19.0 → 1.20.0**: the api, web, Agent backend and Local sandbox images move together (`langgenius/dify-api`, `dify-web`, `dify-agent-backend`, `dify-agent-local-sandbox`, all `1.20.0`); the plugin daemon was already on the `0.6.15-local` this release bundles. Read by hand: the [1.20.0 release notes](https://github.com/langgenius/dify/releases/tag/1.20.0) and the compose file and entrypoint at the `1.20.0` tag. What they mean here:
@@ -335,7 +339,8 @@ does not cost one there:
 - **The plugin debugging port is not published.** Upstream's compose file
   publishes 5003; a production deployment has no use for it.
 
-[Unreleased]: https://github.com/heyvaldemar/dify-traefik-letsencrypt-docker-compose/compare/v1.1.22...HEAD
+[Unreleased]: https://github.com/heyvaldemar/dify-traefik-letsencrypt-docker-compose/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/heyvaldemar/dify-traefik-letsencrypt-docker-compose/compare/v1.1.22...v1.2.0
 [1.1.22]: https://github.com/heyvaldemar/dify-traefik-letsencrypt-docker-compose/compare/v1.1.21...v1.1.22
 [1.1.21]: https://github.com/heyvaldemar/dify-traefik-letsencrypt-docker-compose/compare/v1.1.20...v1.1.21
 [1.1.20]: https://github.com/heyvaldemar/dify-traefik-letsencrypt-docker-compose/compare/v1.1.19...v1.1.20
