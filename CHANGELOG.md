@@ -7,7 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_(no unreleased changes yet)_
+### Changed
+
+- **Dify 1.19.0 → 1.20.0**: the api, web, Agent backend and Local sandbox images move together (`langgenius/dify-api`, `dify-web`, `dify-agent-backend`, `dify-agent-local-sandbox`, all `1.20.0`); the plugin daemon was already on the `0.6.15-local` this release bundles. Read by hand: the [1.20.0 release notes](https://github.com/langgenius/dify/releases/tag/1.20.0) and the compose file and entrypoint at the `1.20.0` tag. What they mean here:
+  - **Six database migrations** (head `53c10126d551` → `f8b6e2c4a901`: personal access tokens, file scanning, the Evaluation tables, which Community Edition gets too). The api applies them on start, as `DIFY_MIGRATION_ENABLED` defaults to true; none needs a manual backfill.
+  - **`shared.env` is no longer loaded, and public URLs move to `urls.defaults`/`urls.env`.** Neither applies: this compose file passes `.env` and sets every public URL from `DIFY_HOSTNAME` itself.
+  - **The new IM callback route** `/callbacks/human-input/v2/im/` → `api:5001` is already in the vendored nginx configuration, which is byte for byte Dify's `1.20.0` copy, as are the squid files.
+  - **The two new Celery queues**, `human_input_delivery` and `human_input_contact_sync`, are in the image's default worker list, which this stack uses (it sets no `CELERY_QUEUES`); 1.20.0 also adds `evaluation` there.
+  - **Dify's own `init_permissions` now also chowns the plugin daemon's storage to uid 1001.** That is for its bind-mounted `./volumes/plugin_daemon`; here the daemon's storage is a named volume, and the daemon image runs as the same `dify` user in 0.6.14 and 0.6.15.
+- **`OPENAPI_ENABLED` and `NEXT_PUBLIC_ENABLE_HITL_IM` are written out in `.env.example`, both `true`.** 1.20.0 turned both on by default: `/openapi/v1/*` for personal access tokens and `difyctl` (each call still needs a token), and New HITL, approvals and contacts in messaging tools. A deployment without the lines gets the same defaults; the lines are there so the switch is in sight. Set either to `false` to turn it off.
+
+### Removed
+
+- **`EXPERIMENTAL_ENABLE_VINEXT`** from `.env.example`: Dify 1.20.0 removed the setting from the web image, so the line no longer did anything.
 
 ## [1.1.22] - 2026-11-19
 
